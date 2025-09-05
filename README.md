@@ -5,6 +5,7 @@
 see the example in the scripts directory
 
 ```shell
+uv sync
 uv run ./scripts/example.py
 ```
 
@@ -37,7 +38,3 @@ uv run ./scripts/example.py
         }
     ]
     ```
-
-- **course_info.json**
-
-    Use f12 to obtain

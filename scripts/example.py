@@ -9,12 +9,11 @@ import tju_autocourse as atc
 
 
 async def main() -> None:
-    atc.Config.load_courses_info("./config/courses_info.json")
     with open("./config/config.json", encoding="utf-8") as f:
         configs = json.load(f)
     async with asyncio.TaskGroup() as tg:
         for config in configs:
-            tg.create_task(atc.User(config).grab())
+            tg.create_task(atc.User(config).start())
 
 
 if __name__ == "__main__":
