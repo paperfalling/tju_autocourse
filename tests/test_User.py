@@ -21,7 +21,9 @@ class TestUser(TestCase):
             print(i)
 
     def test_check_conflict(self):
-        self.assertTrue(user.scheduler.check_conflict({"id": "01123"}))
+        self.assertTrue(
+            user.scheduler.check_conflict({"id": "01123", "name": "test", "no": "000"})
+        )
 
     def test_query_status(self):
         self.assertTrue(user.scheduler.course_status)
