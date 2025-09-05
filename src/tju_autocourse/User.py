@@ -23,13 +23,7 @@ class User:
     def __init__(self, config: dict) -> None:
         self.name = config["name"]
         logger.info(f"{self.name} 初始化")
-        self.config = User.Config(
-            config["cookie"],
-            config["profileId"],
-            config["semesterId"],
-            config["domain"],
-            config["name"],
-        )
+        self.config = User.Config(config["name"], config["cookie"])
         self.tsl = config["tags_sort_limit"]
         self.courses = config["courses"]
         self.scheduler = User.Scheduler(self)
@@ -101,23 +95,17 @@ class User:
         logger.success("查询选课状态成功")
 
     class Config:
-        profileId: int = 0
-        semesterId: int = 0
-        domain: str = "classes.tju.edu.cn"
+        __profileId: int = 0
+        __semesterId: int = 0
+        __domain: str = ""
         __course_status: dict = {}
 
         def __init__(
             self,
+            name: str,
             cookie: str,
-            profileId: int = profileId,
-            semesterId: int = semesterId,
-            domain: str = domain,
-            name: str = "demo",
         ) -> None:
             self.cookie = cookie
-            self.profileId = profileId
-            self.semesterId = semesterId
-            self.domain = domain
             self.name = name
             self.headers = {
                 "Accept": "text/html, */*; q=0.01",
@@ -176,11 +164,29 @@ class User:
 
         @property
         def course_status(self) -> dict:
-            return self.__class__.__course_status
+            return self.__course_status
+
+        @property
+        def profileId(self) -> int:
+            return self.__profileId
+
+        @property
+        def semesterId(self) -> int:
+            return self.__semesterId
+
+        @property
+        def domain(self) -> str:
+            return self.__domain
 
         @classmethod
         def set_course_status(cls, status: dict) -> None:
             cls.__course_status = status
+
+        @classmethod
+        def set_config_meta(cls, meta: dict) -> None:
+            cls.__profileId = meta["profileId"]
+            cls.__semesterId = meta["semesterId"]
+            cls.__domain = meta["domain"]
 
     class Scheduler:
         def __init__(self, user: "User") -> None:
