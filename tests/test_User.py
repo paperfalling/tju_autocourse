@@ -3,31 +3,31 @@
 # @Author  : papersus
 # @File    : test_User.py
 from unittest import TestCase
-from tju_autocourse import User, Scheduler, Config
+from tju_autocourse import User
 import asyncio
 import json
-import time
 
 with open("./config/config.json", encoding="utf-8") as f:
     configs = json.load(f)
-Config.load_courses_info("./config/courses_info.json")
 user = User(configs[0])
-schedule = Scheduler(user)
 
 
 class TestUser(TestCase):
-    def test_grab(self):
-        time.sleep(1)
-        asyncio.run(user.grab())
+    def test_start(self):
+        asyncio.run(user.start())
 
-
-class TestScheduler(TestCase):
     def test_begin(self):
-        for i in schedule.begin():
+        for i in user.scheduler.begin():
             print(i)
 
     def test_check_conflict(self):
-        self.assertTrue(schedule.check_conflict({"id": "01123"}))
+        self.assertTrue(user.scheduler.check_conflict({"id": "01123"}))
 
     def test_query_status(self):
-        schedule.course_status
+        self.assertTrue(user.scheduler.course_status)
+
+    def test_load_courses_info(self):
+        self.assertTrue(user.config.courses_info)
+
+    def test_headers(self):
+        self.assertEqual(user.config.headers["Cookie"], configs[0]["cookie"])
