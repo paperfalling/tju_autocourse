@@ -7,9 +7,10 @@ import tju_autocourse as atc
 
 
 if __name__ == "__main__":
-    with open("./config/config.json", encoding="utf-8") as f:
-        configs = json.load(f)
-    user = atc.User(configs[0])
+    with open("./config.json", encoding="utf-8") as f:
+        config = json.load(f)
+    atc.set_config_meta(config["meta"])
+    user = atc.create_user(config["users"][0])
     print(user.config.courses_info)
-    with open("./config/course_info.json", "w", encoding="utf-8") as f:
+    with open("./data/course_info.json", "w", encoding="utf-8") as f:
         json.dump(user.config.courses_info, f, ensure_ascii=False, indent=4)

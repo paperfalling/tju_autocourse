@@ -1,40 +1,49 @@
 # TJU AutoCourse
 
-## how to use
+## Quick Start
 
-see the example in the scripts directory
+Completing configuration (create and fill in `config.json`)
+
+Then run the following command
 
 ```shell
 uv sync
-uv run ./scripts/example.py
+uv run ./main.py
 ```
 
-## config
+## Config
 
-- **config.json**
+### config.json
 
-    for example
+for example
 
-    ```json
-    [
+```json
+{
+    "meta": {
+        "domain": "classes.tju.edu.cn",
+        "profileId": 3820,
+        "semesterId": 116
+    },
+    "users": [
         {
             "name": "your name (any)",
             "cookie": "your cookie",
             "tags_sort_limit": {
                 "pe": 1,
-                "ele": 1,
+                "ele": 2,
                 "eng": 2,
                 "req": -1
             },
             "courses": {
                 "pe": ["06488", "06491"],
-                "ele": ["05289"],
+                "ele": ["06236", "06233"],
                 "eng": [],
                 "req": []
-            },
-            "domain": "classes.tju.edu.cn",
-            "profileId": 3820,
-            "semesterId": 116
+            }
         }
     ]
-    ```
+}
+```
+
+> [!NOTE]
+> Fill in the **course number** instead of the course code
