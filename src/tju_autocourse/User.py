@@ -16,14 +16,22 @@ from loguru import logger
 format = "<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>"
 logger.remove()
 logger.add(sys.stdout, format=format)
-logger.add("./log", mode="w", format=format)
+logger.add("./logs/{time:YYYY-MM-DD_HH-mm-ss}.log", mode="w", format=format)
 
 
 class User:
     def __init__(self, config: dict) -> None:
         self.name = config["name"]
         logger.info(f"{self.name} 初始化")
-        self.config = User.Config(config["name"], config["cookie"])
+        self.config = User.Config(
+            config["name"],
+            config["cookie"],
+            config.get("profileId"),
+            config.get("semesterId"),
+            config.get("domain"),
+            config.get("startTime"),
+            config.get("skipPre"),
+        )
         self.tsl = config["tags_sort_limit"]
         self.courses = config["courses"]
         self.scheduler = User.Scheduler(self)
@@ -34,6 +42,9 @@ class User:
         res = False
         scheduler = self.scheduler.begin()
         next(scheduler)
+        while time.time() < self.config.startTime:
+            await asyncio.sleep(0.5)
+        logger.info(f"{self.name} 开始选课")
         while True:
             try:
                 course = scheduler.send(res)
@@ -88,7 +99,14 @@ class User:
         if resp.status_code != 200:
             logger.error("查询选课状态失败: ", f"[{resp.status_code}]")
             return
-        resp_text = resp.text[44:].replace("'", '"')
+        match = re.search(r"{.*}", resp.text)
+        if match is None:
+            logger.error("查询选课状态失败: 未找到有效的JSON内容")
+            return
+        resp_text = match.group()
+        resp_text = resp_text.replace("'", '"')
+        resp_text = resp_text.replace("\t", "")
+        resp_text = resp_text.replace("\n", "")
         resp_text = re.sub(r"([a-zA-Z]+)(?=:)", r'"\1"', resp_text)
         with logger.catch(json.JSONDecodeError):
             User.Config.set_course_status(json.loads(resp_text))
@@ -97,16 +115,37 @@ class User:
     class Config:
         __profileId: int = 0
         __semesterId: int = 0
-        __domain: str = ""
+        __domain: str = "classes.tju.edu.cn"
+        __startTime: float = time.mktime(
+            time.strptime("1970-01-01T08:00:00", "%Y-%m-%dT%H:%M:%S")
+        )
+        __skipPre: bool = False
         __course_status: dict = {}
 
         def __init__(
             self,
             name: str,
             cookie: str,
+            profileId: Optional[int] = None,
+            semesterId: Optional[int] = None,
+            domain: Optional[str] = None,
+            startTime: Optional[str] = None,
+            skipPre: Optional[bool] = None,
         ) -> None:
             self.cookie = cookie
             self.name = name
+            if profileId is not None:
+                self.__profileId = profileId
+            if semesterId is not None:
+                self.__semesterId = semesterId
+            if domain is not None:
+                self.__domain = domain
+            if startTime is not None:
+                self.__startTime = time.mktime(
+                    time.strptime(startTime, "%Y-%m-%dT%H:%M:%S")
+                )
+            if skipPre:
+                self.__skipPre = skipPre
             self.headers = {
                 "Accept": "text/html, */*; q=0.01",
                 "Accept-Encoding": "gzip, deflate",
@@ -133,9 +172,16 @@ class User:
                 logger.error(f"{self.name} 查询课程信息失败: Timeout")
                 return []
             if resp.status_code != 200:
-                logger.error(f"{self.name} 查询课程信息失败: ", f"[{resp.status_code}]")
+                logger.error(f"{self.name} 查询课程信息失败: [{resp.status_code}]")
                 return []
-            resp_text = resp.text[18:-1].replace("'", '"')
+            match = re.search(r"\[.*\]", resp.text)
+            if match is None:
+                logger.error(f"{self.name} 查询课程信息失败: 未找到有效的JSON内容")
+                return []
+            resp_text = match.group()
+            resp_text = resp_text.replace("'", '"')
+            resp_text = resp_text.replace("\t", "")
+            resp_text = resp_text.replace("\n", "")
             resp_text = re.sub(r"([a-zA-Z]+)(?=:)", r'"\1"', resp_text)
             with logger.catch(json.JSONDecodeError):
                 data = json.loads(resp_text)
@@ -152,11 +198,8 @@ class User:
                 ]
                 courses_info.append(
                     {
-                        "id": str(course_info["id"]),
-                        "no": course_info["no"],
-                        "name": course_info["name"],
-                        "arrangement": course_info["arrangement"],
-                        "code": course_info["code"],
+                        k: str(course_info[k])
+                        for k in ("id", "no", "name", "arrangement", "code")
                     }
                 )
             logger.success(f"{self.name} 查询课程信息成功")
@@ -178,6 +221,14 @@ class User:
         def domain(self) -> str:
             return self.__domain
 
+        @property
+        def startTime(self) -> float:
+            return self.__startTime
+
+        @property
+        def skipPre(self) -> bool:
+            return self.__skipPre
+
         @classmethod
         def set_course_status(cls, status: dict) -> None:
             cls.__course_status = status
@@ -187,6 +238,10 @@ class User:
             cls.__profileId = meta["profileId"]
             cls.__semesterId = meta["semesterId"]
             cls.__domain = meta["domain"]
+            cls.__startTime = time.mktime(
+                time.strptime(meta["startTime"], "%Y-%m-%dT%H:%M:%S")
+            )
+            cls.__skipPre = meta["skipPre"]
 
     class Scheduler:
         def __init__(self, user: "User") -> None:
@@ -218,17 +273,18 @@ class User:
             return
 
         def check_conflict(self, course: dict) -> bool:
-            current_info: Optional[dict] = self.course_status.get(course["id"])
-            if current_info is None:
-                logger.warning(
-                    f"{self.user.name} 未查询到课程信息: {course['name']}({course['no']})"
-                )
-                return True
-            if current_info["sc"] >= current_info["lc"]:
-                logger.warning(
-                    f"{self.user.name} 选课已满: {course['name']}({course['no']})"
-                )
-                return True
+            if not self.user.config.skipPre:
+                current_info: Optional[dict] = self.course_status.get(course["id"])
+                if current_info is None:
+                    logger.warning(
+                        f"{self.user.name} 未查询到课程状态: {course['name']}({course['no']})"
+                    )
+                    return True
+                if current_info["sc"] >= current_info["lc"]:
+                    logger.warning(
+                        f"{self.user.name} 选课已满: {course['name']}({course['no']})"
+                    )
+                    return True
             for dc in self.done:
                 if dc["code"] == course["code"]:
                     logger.warning(
