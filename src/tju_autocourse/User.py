@@ -198,8 +198,11 @@ class User:
                 ]
                 courses_info.append(
                     {
-                        k: str(course_info[k])
-                        for k in ("id", "no", "name", "arrangement", "code")
+                        "id": str(course_info["id"]),
+                        "no": str(course_info["no"]),
+                        "name": str(course_info["name"]),
+                        "arrangement": course_info["arrangement"],
+                        "code": str(course_info["code"]),
                     }
                 )
             logger.success(f"{self.name} 查询课程信息成功")
