@@ -41,8 +41,7 @@ for example
                 "ele": ["06236", "06233"],
                 "eng": [],
                 "req": []
-            },
-            "skipPre": true
+            }
         }
     ]
 }
@@ -57,4 +56,32 @@ for example
 - `profileId`: The profile ID of the user, can be found by inspecting the network requests when accessing the course selection page
 - `semesterId`: The semester ID, can be found by inspecting the network requests when accessing the course selection page
 - `startTime`: The earliest time when the course selection starts, in ISO 8601 format
-- `skipPre`: Whether to skip the querying of course selection status, if true, the program will not check if the course selection is full
+- `skipPre`: Whether to skip the querying of course selection status, if true, the program will not check if the course selection is full and if the course exists
+
+## Scripts
+
+### course_info.py
+
+A script to query all the course information and save in `./data/course_info.json`
+
+```shell
+uv run ./scripts/course_info.py
+```
+
+### course_statu.py
+
+A script to query the course selection status and save in `./data/course_statu.json`
+
+```shell
+uv run ./scripts/course_statu.py
+```
+
+### check_course.py
+
+A script to check all the courses in `config.json` for details to check the correctness of the course number in your configuration
+
+```shell
+uv run ./scripts/course_info.py
+uv run ./scripts/course_statu.py
+uv run ./scripts/check_course.py
+```
