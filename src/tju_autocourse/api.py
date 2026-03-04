@@ -8,6 +8,15 @@ from typing import Iterable
 from .user import User
 
 
+_config_meta = {
+    "profileId": 0,
+    "semesterId": 0,
+    "domain": "classes.tju.edu.cn",
+    "startTime": "1970-01-01T08:00:00",
+    "skipPre": False,
+}
+
+
 async def _work(config_path: str) -> None:
     with open(config_path, encoding="utf-8") as f:
         config = json.load(f)
@@ -22,7 +31,10 @@ def run(config_path: str) -> None:
 
 
 def create_user(config: dict) -> User:
-    return User(config)
+    merged_config = config.copy()
+    for key, value in _config_meta.items():
+        merged_config.setdefault(key, value)
+    return User(merged_config)
 
 
 def create_users(configs: Iterable[dict]) -> list[User]:
@@ -30,4 +42,4 @@ def create_users(configs: Iterable[dict]) -> list[User]:
 
 
 def set_config_meta(meta: dict) -> None:
-    User.Config.set_config_meta(meta)
+    _config_meta.update(meta)

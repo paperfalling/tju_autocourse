@@ -124,22 +124,13 @@ class User:
         json_text = json_text.replace("\n", "")
         json_text = re.sub(r"([a-zA-Z]+)(?=:)", r'"\1"', json_text)
         try:
-            User.Config.set_course_status(json.loads(json_text))
+            self.config.set_course_status(json.loads(json_text))
         except json.JSONDecodeError:
             logger.error("查询选课状态失败: JSON 解析错误")
             return
         logger.success("查询选课状态成功")
 
     class Config:
-        __profileId: int = 0
-        __semesterId: int = 0
-        __domain: str = "classes.tju.edu.cn"
-        __startTime: float = time.mktime(
-            time.strptime("1970-01-01T08:00:00", "%Y-%m-%dT%H:%M:%S")
-        )
-        __skipPre: bool = False
-        __course_status: dict = {}
-
         def __init__(
             self,
             name: str,
@@ -152,6 +143,14 @@ class User:
         ) -> None:
             self.cookie = cookie
             self.name = name
+            self.__profileId = 0
+            self.__semesterId = 0
+            self.__domain = "classes.tju.edu.cn"
+            self.__startTime = time.mktime(
+                time.strptime("1970-01-01T08:00:00", "%Y-%m-%dT%H:%M:%S")
+            )
+            self.__skipPre = False
+            self.__course_status: dict = {}
             if profileId is not None:
                 self.__profileId = profileId
             if semesterId is not None:
@@ -259,19 +258,8 @@ class User:
         def skipPre(self) -> bool:
             return self.__skipPre
 
-        @classmethod
-        def set_course_status(cls, status: dict) -> None:
-            cls.__course_status = status
-
-        @classmethod
-        def set_config_meta(cls, meta: dict) -> None:
-            cls.__profileId = meta["profileId"]
-            cls.__semesterId = meta["semesterId"]
-            cls.__domain = meta["domain"]
-            cls.__startTime = time.mktime(
-                time.strptime(meta["startTime"], "%Y-%m-%dT%H:%M:%S")
-            )
-            cls.__skipPre = meta["skipPre"]
+        def set_course_status(self, status: dict) -> None:
+            self.__course_status = status
 
     class Scheduler:
         def __init__(self, user: "User") -> None:

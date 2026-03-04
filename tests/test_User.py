@@ -170,3 +170,43 @@ def test_start_runs_scheduler_and_grab(monkeypatch):
     asyncio.run(user.start())
 
     assert called["grab"] == 1
+
+
+def test_config_is_isolated_between_users():
+    atc.set_config_meta(
+        {
+            "domain": "classes.tju.edu.cn",
+            "profileId": 100,
+            "semesterId": 200,
+            "startTime": "1970-01-01T08:00:00",
+            "skipPre": False,
+        }
+    )
+    user_a = atc.create_user(
+        {
+            "name": "a",
+            "cookie": "cookie=a",
+            "tags_sort_limit": {"req": 1},
+            "courses": {"req": ["10001"]},
+        }
+    )
+    user_b = atc.create_user(
+        {
+            "name": "b",
+            "cookie": "cookie=b",
+            "profileId": 999,
+            "semesterId": 888,
+            "domain": "custom.domain",
+            "startTime": "1970-01-01T09:00:00",
+            "skipPre": True,
+            "tags_sort_limit": {"req": 1},
+            "courses": {"req": ["10001"]},
+        }
+    )
+
+    assert user_a.config.profileId == 100
+    assert user_a.config.domain == "classes.tju.edu.cn"
+    assert user_a.config.skipPre is False
+    assert user_b.config.profileId == 999
+    assert user_b.config.domain == "custom.domain"
+    assert user_b.config.skipPre is True
