@@ -15,7 +15,6 @@ async def _main() -> None:
     atc.set_config_meta(config["meta"])
     user = atc.create_user(config["users"][0])
     async with aiohttp.ClientSession() as session:
-        await user.prepare(session)
         await user.query_status(session)
     print(user.config.course_status)
     if not os.path.exists("./data"):

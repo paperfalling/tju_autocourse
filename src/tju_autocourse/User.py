@@ -13,7 +13,7 @@ from loguru import logger
 from .parsers import parse_status_text
 from .user_models import Config, Scheduler
 
-LOG_FORMAT = "<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>"
+LOG_FORMAT = "<green>{time:HH:mm:ss}</green> | <cyan>{name}:{function}:L{line}</cyan> | <level>{level: <8}</level> | <level>{message}</level>"
 _LOGGER_INITIALIZED = False
 
 
