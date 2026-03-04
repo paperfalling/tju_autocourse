@@ -45,14 +45,15 @@ class User:
         while time.time() < self.config.startTime:
             await asyncio.sleep(0.5)
         logger.info(f"{self.name} 开始选课")
-        while True:
-            try:
-                course = scheduler.send(res)
-            except StopIteration:
-                break
-            res = await self.grab(course)
+        async with aiohttp.ClientSession() as session:
+            while True:
+                try:
+                    course = scheduler.send(res)
+                except StopIteration:
+                    break
+                res = await self.grab(course, session)
 
-    async def grab(self, course: dict) -> bool:
+    async def grab(self, course: dict, session: aiohttp.ClientSession) -> bool:
         url = f"http://{self.config.domain}/eams/stdElectCourse!batchOperator.action?profileId={self.config.profileId}"
         cid, cno, cname = course["id"], course["no"], course["name"]
         data = {"optype": "true", "operator0": f"{cid}:true:0"}
@@ -60,29 +61,28 @@ class User:
         while True:
             await asyncio.sleep(max(0.0, 0.5 + self.timer - time.time()))
             try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(
-                        url,
-                        data=data,
-                        headers=self.config.headers,
-                        timeout=aiohttp.ClientTimeout(total=1),
-                    ) as resp:
-                        resp = await resp.text()
-                        self.timer = time.time()
-                        if "成功" in resp:
-                            logger.success(f"{self.name} 选课成功: {cname}({cno})")
-                            return True
-                        elif "过快" in resp:
-                            logger.warning(f"{self.name} 点击过快: {cname}({cno})")
-                        elif "不开放" in resp:
-                            logger.warning(f"{self.name} 选课不开放: {cname}({cno})")
-                        elif "已满" in resp:
-                            logger.warning(f"{self.name} 选课已满: {cname}({cno})")
-                            return False
-                        elif "选过" in resp:
-                            logger.warning(f"{self.name} 选课已选过: {cname}({cno})")
-                            return False
-            except asyncio.TimeoutError:
+                async with session.post(
+                    url,
+                    data=data,
+                    headers=self.config.headers,
+                    timeout=aiohttp.ClientTimeout(total=1),
+                ) as resp:
+                    resp = await resp.text()
+                    self.timer = time.time()
+                    if "成功" in resp:
+                        logger.success(f"{self.name} 选课成功: {cname}({cno})")
+                        return True
+                    elif "过快" in resp:
+                        logger.warning(f"{self.name} 点击过快: {cname}({cno})")
+                    elif "不开放" in resp:
+                        logger.warning(f"{self.name} 选课不开放: {cname}({cno})")
+                    elif "已满" in resp:
+                        logger.warning(f"{self.name} 选课已满: {cname}({cno})")
+                        return False
+                    elif "选过" in resp:
+                        logger.warning(f"{self.name} 选课已选过: {cname}({cno})")
+                        return False
+            except (asyncio.TimeoutError, aiohttp.ClientError):
                 logger.error(f"{self.name} 请求超时: {cname}({cno})")
                 return False
 
@@ -97,7 +97,7 @@ class User:
             logger.error("查询选课状态失败: Timeout")
             return
         if resp.status_code != 200:
-            logger.error("查询选课状态失败: ", f"[{resp.status_code}]")
+            logger.error(f"查询选课状态失败: [{resp.status_code}]")
             return
         match = re.search(r"{.*}", resp.text)
         if match is None:
@@ -108,8 +108,11 @@ class User:
         resp_text = resp_text.replace("\t", "")
         resp_text = resp_text.replace("\n", "")
         resp_text = re.sub(r"([a-zA-Z]+)(?=:)", r'"\1"', resp_text)
-        with logger.catch(json.JSONDecodeError):
+        try:
             User.Config.set_course_status(json.loads(resp_text))
+        except json.JSONDecodeError:
+            logger.error("查询选课状态失败: JSON 解析错误")
+            return
         logger.success("查询选课状态成功")
 
     class Config:
@@ -144,7 +147,7 @@ class User:
                 self.__startTime = time.mktime(
                     time.strptime(startTime, "%Y-%m-%dT%H:%M:%S")
                 )
-            if skipPre:
+            if skipPre is not None:
                 self.__skipPre = skipPre
             self.headers = {
                 "Accept": "text/html, */*; q=0.01",
@@ -183,8 +186,11 @@ class User:
             resp_text = resp_text.replace("\t", "")
             resp_text = resp_text.replace("\n", "")
             resp_text = re.sub(r"([a-zA-Z]+)(?=:)", r'"\1"', resp_text)
-            with logger.catch(json.JSONDecodeError):
+            try:
                 data = json.loads(resp_text)
+            except json.JSONDecodeError:
+                logger.error(f"{self.name} 查询课程信息失败: JSON 解析错误")
+                return []
             courses_info = []
             for course_info in data:
                 course_info["arrangement"] = [
