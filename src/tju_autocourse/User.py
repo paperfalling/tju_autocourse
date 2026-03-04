@@ -4,14 +4,13 @@
 # @File    : user.py
 import asyncio
 import time
-import json
 import sys
-import re
 import os
 from typing import Optional, Generator
 
 import aiohttp
 from loguru import logger
+from .parsers import parse_status_text, parse_courses_text
 
 LOG_FORMAT = "<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>"
 _LOGGER_INITIALIZED = False
@@ -125,19 +124,10 @@ class User:
         if status_code != 200:
             logger.error(f"查询选课状态失败: [{status_code}]")
             return
-        match = re.search(r"{.*}", resp_text)
-        if match is None:
-            logger.error("查询选课状态失败: 未找到有效的JSON内容")
-            return
-        json_text = match.group()
-        json_text = json_text.replace("'", '"')
-        json_text = json_text.replace("\t", "")
-        json_text = json_text.replace("\n", "")
-        json_text = re.sub(r"([a-zA-Z]+)(?=:)", r'"\1"', json_text)
         try:
-            self.config.set_course_status(json.loads(json_text))
-        except json.JSONDecodeError:
-            logger.error("查询选课状态失败: JSON 解析错误")
+            self.config.set_course_status(parse_status_text(resp_text))
+        except ValueError as exc:
+            logger.error(f"查询选课状态失败: {exc}")
             return
         logger.success("查询选课状态成功")
 
@@ -208,40 +198,11 @@ class User:
             if status_code != 200:
                 logger.error(f"{self.name} 查询课程信息失败: [{status_code}]")
                 return []
-            match = re.search(r"\[.*\]", resp_text)
-            if match is None:
-                logger.error(f"{self.name} 查询课程信息失败: 未找到有效的JSON内容")
-                return []
-            json_text = match.group()
-            json_text = json_text.replace("'", '"')
-            json_text = json_text.replace("\t", "")
-            json_text = json_text.replace("\n", "")
-            json_text = re.sub(r"([a-zA-Z]+)(?=:)", r'"\1"', json_text)
             try:
-                data = json.loads(json_text)
-            except json.JSONDecodeError:
-                logger.error(f"{self.name} 查询课程信息失败: JSON 解析错误")
+                courses_info = parse_courses_text(resp_text)
+            except ValueError as exc:
+                logger.error(f"{self.name} 查询课程信息失败: {exc}")
                 return []
-            courses_info = []
-            for course_info in data:
-                course_info["arrangement"] = [
-                    (
-                        int(j["weekState"], base=2),
-                        j["weekDay"],
-                        j["startUnit"],
-                        j["endUnit"],
-                    )
-                    for j in course_info["arrangeInfo"]
-                ]
-                courses_info.append(
-                    {
-                        "id": str(course_info["id"]),
-                        "no": str(course_info["no"]),
-                        "name": str(course_info["name"]),
-                        "arrangement": course_info["arrangement"],
-                        "code": str(course_info["code"]),
-                    }
-                )
             logger.success(f"{self.name} 查询课程信息成功")
             return courses_info
 
