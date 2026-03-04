@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2025/09/02 18:26
 # @Author  : papersus
-# @File    : User.py
+# @File    : user.py
 import asyncio
 import time
 import json
@@ -10,7 +10,6 @@ import re
 from typing import Optional, Generator
 
 import aiohttp
-import requests
 from loguru import logger
 
 format = "<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>"
@@ -34,18 +33,28 @@ class User:
         )
         self.tsl = config["tags_sort_limit"]
         self.courses = config["courses"]
-        self.scheduler = User.Scheduler(self)
+        self.scheduler: Optional[User.Scheduler] = None
         self.timer = time.time()
         logger.success(f"{self.name} 初始化成功")
 
+    async def prepare(self, session: aiohttp.ClientSession) -> None:
+        self.config.courses_info = await self.config.query_courses_info(session)
+        self.scheduler = User.Scheduler(self)
+
     async def start(self) -> None:
         res = False
-        scheduler = self.scheduler.begin()
-        next(scheduler)
-        while time.time() < self.config.startTime:
-            await asyncio.sleep(0.5)
-        logger.info(f"{self.name} 开始选课")
         async with aiohttp.ClientSession() as session:
+            await self.prepare(session)
+            if not self.config.skipPre and not self.config.course_status:
+                await self.query_status(session)
+            if self.scheduler is None:
+                logger.error(f"{self.name} 调度器初始化失败")
+                return
+            scheduler = self.scheduler.begin()
+            next(scheduler)
+            while time.time() < self.config.startTime:
+                await asyncio.sleep(0.5)
+            logger.info(f"{self.name} 开始选课")
             while True:
                 try:
                     course = scheduler.send(res)
@@ -86,30 +95,36 @@ class User:
                 logger.error(f"{self.name} 请求超时: {cname}({cno})")
                 return False
 
-    def query_status(self) -> None:
+    async def query_status(self, session: aiohttp.ClientSession) -> None:
         url = f"http://{self.config.domain}/eams/stdElectCourse!queryStdCount.action?projectId=1&semesterId={self.config.semesterId}"
         logger.info("查询选课状态")
+        await asyncio.sleep(max(0.0, 0.5 + self.timer - time.time()))
         try:
-            time.sleep(max(0.0, 0.5 + self.timer - time.time()))
-            resp = requests.get(url, headers=self.config.headers, timeout=2)
+            async with session.get(
+                url,
+                headers=self.config.headers,
+                timeout=aiohttp.ClientTimeout(total=2),
+            ) as resp:
+                status_code = resp.status
+                resp_text = await resp.text()
             self.timer = time.time()
-        except requests.exceptions.Timeout:
+        except (asyncio.TimeoutError, aiohttp.ClientError):
             logger.error("查询选课状态失败: Timeout")
             return
-        if resp.status_code != 200:
-            logger.error(f"查询选课状态失败: [{resp.status_code}]")
+        if status_code != 200:
+            logger.error(f"查询选课状态失败: [{status_code}]")
             return
-        match = re.search(r"{.*}", resp.text)
+        match = re.search(r"{.*}", resp_text)
         if match is None:
             logger.error("查询选课状态失败: 未找到有效的JSON内容")
             return
-        resp_text = match.group()
-        resp_text = resp_text.replace("'", '"')
-        resp_text = resp_text.replace("\t", "")
-        resp_text = resp_text.replace("\n", "")
-        resp_text = re.sub(r"([a-zA-Z]+)(?=:)", r'"\1"', resp_text)
+        json_text = match.group()
+        json_text = json_text.replace("'", '"')
+        json_text = json_text.replace("\t", "")
+        json_text = json_text.replace("\n", "")
+        json_text = re.sub(r"([a-zA-Z]+)(?=:)", r'"\1"', json_text)
         try:
-            User.Config.set_course_status(json.loads(resp_text))
+            User.Config.set_course_status(json.loads(json_text))
         except json.JSONDecodeError:
             logger.error("查询选课状态失败: JSON 解析错误")
             return
@@ -164,30 +179,36 @@ class User:
                 "Referer": f"http://{self.domain}/eams/stdElectCourse!defaultPage.action",
                 "Cookie": self.cookie,
             }
-            self.courses_info = self.query_courses_info()
+            self.courses_info = []
 
-        def query_courses_info(self) -> list:
+        async def query_courses_info(self, session: aiohttp.ClientSession) -> list:
             logger.info(f"{self.name} 查询课程信息")
             url = f"http://{self.domain}/eams/stdElectCourse!data.action?profileId={self.profileId}"
             try:
-                resp = requests.get(url, headers=self.headers, timeout=3)
-            except requests.exceptions.Timeout:
+                async with session.get(
+                    url,
+                    headers=self.headers,
+                    timeout=aiohttp.ClientTimeout(total=3),
+                ) as resp:
+                    status_code = resp.status
+                    resp_text = await resp.text()
+            except (asyncio.TimeoutError, aiohttp.ClientError):
                 logger.error(f"{self.name} 查询课程信息失败: Timeout")
                 return []
-            if resp.status_code != 200:
-                logger.error(f"{self.name} 查询课程信息失败: [{resp.status_code}]")
+            if status_code != 200:
+                logger.error(f"{self.name} 查询课程信息失败: [{status_code}]")
                 return []
-            match = re.search(r"\[.*\]", resp.text)
+            match = re.search(r"\[.*\]", resp_text)
             if match is None:
                 logger.error(f"{self.name} 查询课程信息失败: 未找到有效的JSON内容")
                 return []
-            resp_text = match.group()
-            resp_text = resp_text.replace("'", '"')
-            resp_text = resp_text.replace("\t", "")
-            resp_text = resp_text.replace("\n", "")
-            resp_text = re.sub(r"([a-zA-Z]+)(?=:)", r'"\1"', resp_text)
+            json_text = match.group()
+            json_text = json_text.replace("'", '"')
+            json_text = json_text.replace("\t", "")
+            json_text = json_text.replace("\n", "")
+            json_text = re.sub(r"([a-zA-Z]+)(?=:)", r'"\1"', json_text)
             try:
-                data = json.loads(resp_text)
+                data = json.loads(json_text)
             except json.JSONDecodeError:
                 logger.error(f"{self.name} 查询课程信息失败: JSON 解析错误")
                 return []
@@ -315,6 +336,4 @@ class User:
 
         @property
         def course_status(self) -> dict:
-            if not self.user.config.course_status:
-                self.user.query_status()
             return self.user.config.course_status

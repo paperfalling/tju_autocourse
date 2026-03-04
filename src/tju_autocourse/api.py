@@ -5,7 +5,7 @@
 import json
 import asyncio
 from typing import Iterable
-from .User import User
+from .user import User
 
 
 async def _work(config_path: str) -> None:
