@@ -7,19 +7,30 @@ import time
 import json
 import sys
 import re
+import os
 from typing import Optional, Generator
 
 import aiohttp
 from loguru import logger
 
-format = "<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>"
-logger.remove()
-logger.add(sys.stdout, format=format)
-logger.add("./logs/{time:YYYY-MM-DD_HH-mm-ss}.log", mode="w", format=format)
+LOG_FORMAT = "<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>"
+_LOGGER_INITIALIZED = False
+
+
+def init_logger() -> None:
+    global _LOGGER_INITIALIZED
+    if _LOGGER_INITIALIZED:
+        return
+    os.makedirs("./logs", exist_ok=True)
+    logger.remove()
+    logger.add(sys.stdout, format=LOG_FORMAT)
+    logger.add("./logs/{time:YYYY-MM-DD_HH-mm-ss}.log", mode="w", format=LOG_FORMAT)
+    _LOGGER_INITIALIZED = True
 
 
 class User:
     def __init__(self, config: dict) -> None:
+        init_logger()
         self.name = config["name"]
         logger.info(f"{self.name} 初始化")
         self.config = User.Config(

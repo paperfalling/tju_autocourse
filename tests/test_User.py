@@ -1,5 +1,6 @@
 import asyncio
 import aiohttp
+import pytest
 import tju_autocourse as atc
 
 
@@ -210,3 +211,36 @@ def test_config_is_isolated_between_users():
     assert user_b.config.profileId == 999
     assert user_b.config.domain == "custom.domain"
     assert user_b.config.skipPre is True
+
+
+def test_set_config_meta_rejects_invalid_time_format():
+    with pytest.raises(ValueError):
+        atc.set_config_meta(
+            {
+                "domain": "classes.tju.edu.cn",
+                "profileId": 1,
+                "semesterId": 2,
+                "startTime": "1970/01/01 08:00:00",
+                "skipPre": False,
+            }
+        )
+
+
+def test_create_user_rejects_missing_required_fields():
+    atc.set_config_meta(
+        {
+            "domain": "classes.tju.edu.cn",
+            "profileId": 1,
+            "semesterId": 2,
+            "startTime": "1970-01-01T08:00:00",
+            "skipPre": False,
+        }
+    )
+    with pytest.raises(ValueError):
+        atc.create_user(
+            {
+                "name": "tester",
+                "cookie": "cookie=test",
+                "tags_sort_limit": {"req": 1},
+            }
+        )
