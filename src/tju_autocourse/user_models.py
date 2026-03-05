@@ -52,18 +52,18 @@ class Config:
             "Content-Length": "39",
             "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
             "Host": self.domain,
-            "Origin": f"http://{self.domain}",
+            "Origin": f"https://{self.domain}",
             "Pragma": "no-cache",
             "x-requested-with": "XMLHttpRequest",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-            "Referer": f"http://{self.domain}/eams/stdElectCourse!defaultPage.action",
+            "Referer": f"https://{self.domain}/eams/stdElectCourse!defaultPage.action",
             "Cookie": self.cookie,
         }
         self.courses_info = []
 
     async def query_courses_info(self, session: aiohttp.ClientSession) -> list:
         logger.info(f"{self.name} 查询课程信息")
-        url = f"http://{self.domain}/eams/stdElectCourse!data.action?profileId={self.profileId}"
+        url = f"https://{self.domain}/eams/stdElectCourse!data.action?profileId={self.profileId}"
         try:
             async with session.get(
                 url,

@@ -77,7 +77,7 @@ class User:
                 res = await self.grab(course, session)
 
     async def grab(self, course: dict, session: aiohttp.ClientSession) -> bool:
-        url = f"http://{self.config.domain}/eams/stdElectCourse!batchOperator.action?profileId={self.config.profileId}"
+        url = f"https://{self.config.domain}/eams/stdElectCourse!batchOperator.action?profileId={self.config.profileId}"
         cid, cno, cname = course["id"], course["no"], course["name"]
         data = {"optype": "true", "operator0": f"{cid}:true:0"}
         logger.info(f"{self.name} 尝试选课: {cname}({cno})")
@@ -110,7 +110,7 @@ class User:
                 return False
 
     async def query_status(self, session: aiohttp.ClientSession) -> None:
-        url = f"http://{self.config.domain}/eams/stdElectCourse!queryStdCount.action?projectId=1&semesterId={self.config.semesterId}"
+        url = f"https://{self.config.domain}/eams/stdElectCourse!queryStdCount.action?projectId=1&semesterId={self.config.semesterId}"
         logger.info("查询选课状态")
         await asyncio.sleep(max(0.0, 0.5 + self.timer - time.time()))
         try:
