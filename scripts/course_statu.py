@@ -5,7 +5,6 @@
 import json
 import os
 import asyncio
-import aiohttp
 import tju_autocourse as atc
 
 
@@ -14,8 +13,7 @@ async def _main() -> None:
         config = json.load(f)
     atc.set_config_meta(config["meta"])
     user = atc.create_user(config["users"][0])
-    async with aiohttp.ClientSession() as session:
-        await user.query_status(session)
+    await user.query_status()
     print(user.config.course_status)
     if not os.path.exists("./data"):
         os.mkdir("./data")
