@@ -45,15 +45,16 @@ class Config:
         if skipPre is not None:
             self.__skipPre = skipPre
         self.headers = {
-            "Accept": "text/html, */*; q=0.01",
-            "Accept-Encoding": "gzip, deflate",
-            "Accept-Language": "zh-CN,zh;q=0.9",
-            "Cache-Control": "no-cache",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "Accept-Encoding": "gzip, deflate, br, zstd",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "connection": "keep-alive",
+            # "Cache-Control": "no-cache",
             "Content-Length": "39",
             "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
             "Host": self.domain,
             "Origin": f"https://{self.domain}",
-            "Pragma": "no-cache",
+            # "Pragma": "no-cache",
             "x-requested-with": "XMLHttpRequest",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
             "Referer": f"https://{self.domain}/eams/stdElectCourse!defaultPage.action",
@@ -61,17 +62,18 @@ class Config:
         }
         self.courses_info = []
 
-    async def query_courses_info(self, session: aiohttp.ClientSession) -> list:
+    async def query_courses_info(self) -> list:
         logger.info(f"{self.name} 查询课程信息")
         url = f"https://{self.domain}/eams/stdElectCourse!data.action?profileId={self.profileId}"
         try:
-            async with session.get(
-                url,
-                headers=self.headers,
-                timeout=aiohttp.ClientTimeout(total=3),
-            ) as resp:
-                status_code = resp.status
-                resp_text = await resp.text()
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url,
+                    headers=self.headers,
+                    timeout=aiohttp.ClientTimeout(total=3),
+                ) as resp:
+                    status_code = resp.status
+                    resp_text = await resp.text()
         except (asyncio.TimeoutError, aiohttp.ClientError):
             logger.error(f"{self.name} 查询课程信息失败: Timeout")
             return []

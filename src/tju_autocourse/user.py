@@ -51,16 +51,16 @@ class User:
         self.timer = time.time()
         logger.success(f"{self.name} 初始化成功")
 
-    async def prepare(self, session: aiohttp.ClientSession) -> None:
-        self.config.courses_info = await self.config.query_courses_info(session)
+    async def prepare(self) -> None:
+        self.config.courses_info = await self.config.query_courses_info()
         self.scheduler = Scheduler(self)
 
     async def start(self) -> None:
         res = False
+        await self.prepare()
         async with aiohttp.ClientSession() as session:
-            await self.prepare(session)
             if not self.config.skipPre and not self.config.course_status:
-                await self.query_status(session)
+                await self.query_status()
             if self.scheduler is None:
                 logger.error(f"{self.name} 调度器初始化失败")
                 return
@@ -109,18 +109,19 @@ class User:
                 logger.error(f"{self.name} 请求超时: {cname}({cno})")
                 return False
 
-    async def query_status(self, session: aiohttp.ClientSession) -> None:
+    async def query_status(self) -> None:
         url = f"https://{self.config.domain}/eams/stdElectCourse!queryStdCount.action?projectId=1&semesterId={self.config.semesterId}"
         logger.info("查询选课状态")
         await asyncio.sleep(max(0.0, 0.5 + self.timer - time.time()))
         try:
-            async with session.get(
-                url,
-                headers=self.config.headers,
-                timeout=aiohttp.ClientTimeout(total=2),
-            ) as resp:
-                status_code = resp.status
-                resp_text = await resp.text()
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url,
+                    headers=self.config.headers,
+                    timeout=aiohttp.ClientTimeout(total=2),
+                ) as resp:
+                    status_code = resp.status
+                    resp_text = await resp.text()
             self.timer = time.time()
         except (asyncio.TimeoutError, aiohttp.ClientError):
             logger.error("查询选课状态失败: Timeout")
