@@ -1,0 +1,12 @@
+meta:
+  domain: classes.tju.edu.cn
+  startTime: 1970-01-01T08:00:00
+
+users:
+- cookie: your cookie
+  targets:
+  - group_name: group 1 name
+    limit: -1 # -1 means no limit
+    courses:
+    - "course 1 no."
+    - "course 2 no."

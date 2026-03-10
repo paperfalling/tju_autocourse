@@ -1,6 +1,6 @@
-import time
+import datetime
 from typing import Optional, Generator, TYPE_CHECKING
-from pydantic import BaseModel, Field, PrivateAttr, field_validator
+from pydantic import BaseModel, Field, PrivateAttr
 from loguru import logger
 
 if TYPE_CHECKING:
@@ -13,25 +13,15 @@ class Config(BaseModel):
     profileId: int = 0
     semesterId: int = 0
     domain: str = "classes.tju.edu.cn"
-    startTime: float = Field(
-        default_factory=lambda: time.mktime(
-            time.strptime("1970-01-01T08:00:00", "%Y-%m-%dT%H:%M:%S")
+    startTime: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.strptime(
+            "1970-01-01T08:00:00", "%Y-%m-%dT%H:%M:%S"
         )
     )
     skipPre: bool = False
 
     _courses_info: list = PrivateAttr(default_factory=list)
     _course_status: dict = PrivateAttr(default_factory=dict)
-
-    @field_validator("startTime", mode="before")
-    @classmethod
-    def validate_start_time(cls, v):
-        if isinstance(v, str):
-            try:
-                return time.mktime(time.strptime(v, "%Y-%m-%dT%H:%M:%S"))
-            except ValueError:
-                pass
-        return v
 
     @property
     def headers(self) -> dict:

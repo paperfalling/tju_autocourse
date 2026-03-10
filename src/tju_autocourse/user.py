@@ -72,9 +72,10 @@ class User:
             if self.scheduler is None:
                 logger.error(f"{self.name} 调度器初始化失败")
                 return
+            start_time = self.config.startTime.timestamp()
             scheduler = self.scheduler.begin()
             next(scheduler)
-            while time.time() < self.config.startTime:
+            while time.time() < start_time:
                 await asyncio.sleep(0.01)
             logger.info(f"{self.name} 开始选课")
             while True:
@@ -120,6 +121,7 @@ class User:
     async def query_info(self) -> list:
         logger.info(f"{self.name} 查询课程信息")
         url = f"https://{self.config.domain}/eams/stdElectCourse!data.action?profileId={self.config.profileId}"
+        await self.wait(0.5)
         try:
             async with self.session.get(
                 url,

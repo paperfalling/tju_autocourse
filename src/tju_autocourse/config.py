@@ -1,6 +1,6 @@
-import time
+import datetime
 from typing import List, Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 
 class TargetConfig(BaseModel):
@@ -10,20 +10,15 @@ class TargetConfig(BaseModel):
 
 
 class MetaConfig(BaseModel):
-    domain: str = Field(min_length=1)
-    profileId: int
-    semesterId: int
-    startTime: str
-    skipPre: bool
-
-    @field_validator("startTime")
-    @classmethod
-    def validate_time(cls, v: str) -> str:
-        try:
-            time.strptime(v, "%Y-%m-%dT%H:%M:%S")
-        except ValueError as exc:
-            raise ValueError("时间格式错误，应为 YYYY-MM-DDTHH:MM:SS") from exc
-        return v
+    domain: str = Field(default="classes.tju.edu.cn")
+    profileId: int = 0
+    semesterId: int = 0
+    startTime: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.strptime(
+            "1970-01-01T08:00:00", "%Y-%m-%dT%H:%M:%S"
+        )
+    )
+    skipPre: bool = False
 
 
 class UserConfig(BaseModel):
@@ -32,19 +27,9 @@ class UserConfig(BaseModel):
     targets: List[TargetConfig]
     profileId: Optional[int] = None
     semesterId: Optional[int] = None
-    domain: Optional[str] = Field(None, min_length=1)
-    startTime: Optional[str] = None
+    domain: Optional[str] = None
+    startTime: Optional[datetime.datetime] = None
     skipPre: Optional[bool] = None
-
-    @field_validator("startTime")
-    @classmethod
-    def validate_time(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None:
-            try:
-                time.strptime(v, "%Y-%m-%dT%H:%M:%S")
-            except ValueError as exc:
-                raise ValueError("时间格式错误，应为 YYYY-MM-DDTHH:MM:SS") from exc
-        return v
 
 
 class AppConfig(BaseModel):
@@ -56,7 +41,7 @@ _DEFAULT_META = {
     "profileId": 0,
     "semesterId": 0,
     "domain": "classes.tju.edu.cn",
-    "startTime": "1970-01-01T08:00:00",
+    "startTime": datetime.datetime(1970, 1, 1, 8, 0, 0),
     "skipPre": False,
 }
 

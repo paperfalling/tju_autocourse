@@ -7,6 +7,7 @@ requires-python = ">=3.13"
 dependencies = [
     "aiohttp>=3.12.15",
     "loguru>=0.7.3",
+    "lxml>=6.0.2",
     "pydantic>=2.12.5",
     "pyyaml>=6.0.3",
 ]
