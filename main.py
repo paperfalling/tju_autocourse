@@ -6,4 +6,4 @@ import tju_autocourse as atc
 
 
 if __name__ == "__main__":
-    atc.run("./config.json")
+    atc.run("./config.yaml")

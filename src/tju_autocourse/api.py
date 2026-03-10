@@ -2,8 +2,8 @@
 # @Time    : 2025/09/05 18:49
 # @Author  : papersus
 # @File    : api.py
-import json
 import asyncio
+import yaml
 from typing import Iterable
 from .user import User, init_logger
 from .config import (
@@ -16,7 +16,7 @@ from .config import (
 
 async def _work(config_path: str) -> None:
     with open(config_path, encoding="utf-8") as f:
-        config = json.load(f)
+        config = yaml.safe_load(f)
     validate_config(config)
     set_config_meta(config["meta"])
     async with asyncio.TaskGroup() as tg:

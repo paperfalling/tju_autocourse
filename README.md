@@ -2,7 +2,7 @@
 
 ## Quick Start
 
-Completing configuration (create and fill in `config.json`)
+Completing configuration (create and fill in `config.yaml`)
 
 Then run the following command
 
@@ -13,38 +13,32 @@ uv run ./main.py
 
 ## Config
 
-### config.json
+### config.yaml
 
 for example
 
-```json
-{
-    "meta": {
-        "domain": "classes.tju.edu.cn",
-        "profileId": 3820,
-        "semesterId": 116,
-        "startTime": "1970-01-01T08:00:00",
-        "skipPre": false
-    },
-    "users": [
-        {
-            "name": "your name (any)",
-            "cookie": "your cookie",
-            "tags_sort_limit": {
-                "pe": 1,
-                "ele": 2,
-                "eng": 2,
-                "req": -1
-            },
-            "courses": {
-                "pe": ["06488", "06491"],
-                "ele": ["06236", "06233"],
-                "eng": [],
-                "req": []
-            }
-        }
-    ]
-}
+```yaml
+meta:
+  domain: "classes.tju.edu.cn"
+  profileId: 3820
+  semesterId: 116
+  startTime: "1970-01-01T08:00:00"
+  skipPre: false
+
+users:
+  - name: "your name (any)"
+    cookie: "your cookie"
+    targets:
+      - group_name: "pe"
+        limit: 1
+        courses:
+          - "06488"
+          - "06491"
+      - group_name: "ele"
+        limit: 2
+        courses:
+          - "06236"
+          - "06233"
 ```
 
 > [!NOTE]
@@ -78,7 +72,7 @@ uv run ./scripts/course_statu.py
 
 ### check_course.py
 
-A script to check all the courses in `config.json` for details to check the correctness of the course number in your configuration
+A script to check all the courses in `config.yaml` for details to check the correctness of the course number in your configuration
 
 ```shell
 uv run ./scripts/course_info.py

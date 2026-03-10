@@ -118,30 +118,40 @@ class Config:
 class Scheduler:
     def __init__(self, user: "User") -> None:
         self.user = user
-        self.courses = {
-            tag: [
+        self.task_queue = []
+        for target in user.targets:
+            candidate_courses = [
                 course
-                for course_no in user.courses[tag]
+                for course_no in target["courses"]
                 for course in self.user.config.courses_info
                 if course_no == course["no"]
             ]
-            for tag in user.courses
-        }
+            self.task_queue.append(
+                {
+                    "group_name": target["group_name"],
+                    "target_count": target["limit"],
+                    "succeeded_count": 0,
+                    "candidate_courses": candidate_courses,
+                }
+            )
         self.done = []
 
     def begin(self) -> Generator[dict, bool, None]:
         yield {}
-        for tag in self.user.tsl:
-            num = 0
-            for course in self.courses[tag]:
-                if num >= self.user.tsl[tag] >= 0:
-                    logger.info(f"{self.user.name} {tag} 选课数量已达上限")
+        for task in self.task_queue:
+            group_name = task["group_name"]
+            for course in task["candidate_courses"]:
+                if task["succeeded_count"] >= task["target_count"] >= 0:
+                    logger.info(f"{self.user.name} [{group_name}] 选课数量已达上限")
                     break
                 if self.check_conflict(course):
                     continue
-                if (yield course):
+
+                # 发送该课程并且接收是否成功的结果
+                is_success = yield course
+                if is_success:
                     self.done.append(course)
-                    num += 1
+                    task["succeeded_count"] += 1
         return
 
     def check_conflict(self, course: dict) -> bool:

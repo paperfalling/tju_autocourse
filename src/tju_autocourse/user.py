@@ -45,8 +45,7 @@ class User:
             config.get("startTime"),
             config.get("skipPre"),
         )
-        self.tsl = config["tags_sort_limit"]
-        self.courses = config["courses"]
+        self.targets = config["targets"]
         self.scheduler: Optional[Scheduler] = None
         self.timer = time.time()
         logger.success(f"{self.name} 初始化成功")

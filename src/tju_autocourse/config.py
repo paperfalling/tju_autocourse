@@ -46,24 +46,25 @@ def validate_meta(meta: dict) -> None:
 
 def validate_user_config(config: dict) -> None:
     _expect_type(config, dict, "user")
-    required_fields = ["name", "cookie", "tags_sort_limit", "courses"]
+    required_fields = ["name", "cookie", "targets"]
     for field in required_fields:
         if field not in config:
             raise ValueError(f"用户配置项 `{field}` 缺失")
     _expect_type(config["name"], str, "user.name")
     _expect_type(config["cookie"], str, "user.cookie")
-    _expect_type(config["tags_sort_limit"], dict, "user.tags_sort_limit")
-    _expect_type(config["courses"], dict, "user.courses")
-    for tag, limit in config["tags_sort_limit"].items():
-        _expect_type(tag, str, "user.tags_sort_limit.<tag>")
-        _expect_type(limit, int, f"user.tags_sort_limit.{tag}")
-        if tag not in config["courses"]:
-            raise ValueError(f"用户配置项 `courses.{tag}` 缺失")
-    for tag, courses in config["courses"].items():
-        _expect_type(tag, str, "user.courses.<tag>")
-        _expect_type(courses, list, f"user.courses.{tag}")
-        for course_no in courses:
-            _expect_type(course_no, str, f"user.courses.{tag}[]")
+    _expect_type(config["targets"], list, "user.targets")
+
+    for i, target in enumerate(config["targets"]):
+        _expect_type(target, dict, f"user.targets[{i}]")
+        for tf in ["group_name", "limit", "courses"]:
+            if tf not in target:
+                raise ValueError(f"用户配置项 `targets[{i}].{tf}` 缺失")
+        _expect_type(target["group_name"], str, f"user.targets[{i}].group_name")
+        _expect_type(target["limit"], int, f"user.targets[{i}].limit")
+        _expect_type(target["courses"], list, f"user.targets[{i}].courses")
+        for j, course_no in enumerate(target["courses"]):
+            _expect_type(course_no, str, f"user.targets[{i}].courses[{j}]")
+
     optional_fields = {
         "profileId": int,
         "semesterId": int,

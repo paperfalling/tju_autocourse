@@ -4,7 +4,11 @@ version = "0.1.0"
 description = "Automatic course selection tool for TJU"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = ["aiohttp>=3.12.15", "loguru>=0.7.3"]
+dependencies = [
+    "aiohttp>=3.12.15",
+    "loguru>=0.7.3",
+    "pyyaml>=6.0.3",
+]
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
