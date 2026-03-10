@@ -67,7 +67,7 @@ class User:
             scheduler = self.scheduler.begin()
             next(scheduler)
             while time.time() < self.config.startTime:
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.01)
             logger.info(f"{self.name} 开始选课")
             while True:
                 try:
@@ -83,15 +83,15 @@ class User:
         logger.info(f"{self.name} 尝试选课: {cname}({cno})")
         while True:
             await asyncio.sleep(max(0.0, 0.5 + self.timer - time.time()))
+            self.timer = time.time()
             try:
                 async with session.post(
                     url,
                     data=data,
                     headers=self.config.headers,
-                    timeout=aiohttp.ClientTimeout(total=1),
+                    timeout=aiohttp.ClientTimeout(total=2),
                 ) as resp:
                     resp = await resp.text()
-                    self.timer = time.time()
                     if "成功" in resp:
                         logger.success(f"{self.name} 选课成功: {cname}({cno})")
                         return True
@@ -113,6 +113,7 @@ class User:
         url = f"https://{self.config.domain}/eams/stdElectCourse!queryStdCount.action?projectId=1&semesterId={self.config.semesterId}"
         logger.info("查询选课状态")
         await asyncio.sleep(max(0.0, 0.5 + self.timer - time.time()))
+        self.timer = time.time()
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(
@@ -122,7 +123,6 @@ class User:
                 ) as resp:
                     status_code = resp.status
                     resp_text = await resp.text()
-            self.timer = time.time()
         except (asyncio.TimeoutError, aiohttp.ClientError):
             logger.error("查询选课状态失败: Timeout")
             return
