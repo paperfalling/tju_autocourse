@@ -107,6 +107,7 @@ def test_query_courses_info_parse_success(monkeypatch):
     )
 
     class _DummySession:
+        def __init__(self, *args, **kwargs): ...
         async def __aenter__(self):
             return _FakeSession(get_responses=[_FakeResponse(200, fake_text)])
 
@@ -114,8 +115,9 @@ def test_query_courses_info_parse_success(monkeypatch):
             pass
 
     monkeypatch.setattr(aiohttp, "ClientSession", _DummySession)
+    user.session = _FakeSession(get_responses=[_FakeResponse(200, fake_text)])  # type: ignore
 
-    courses = asyncio.run(user.config.query_courses_info())
+    courses = asyncio.run(user.query_info())
     assert len(courses) == 1
     assert courses[0]["no"] == "10001"
     assert courses[0]["arrangement"] == [(3, 1, 1, 2)]
@@ -127,6 +129,7 @@ def test_query_status_parse_success_sets_course_status(monkeypatch):
     status_text = "anything {'1':{sc:1,lc:2,unplan:'否'}} anything"
 
     class _DummySession:
+        def __init__(self, *args, **kwargs): ...
         async def __aenter__(self):
             return _FakeSession(get_responses=[_FakeResponse(200, status_text)])
 
@@ -134,7 +137,7 @@ def test_query_status_parse_success_sets_course_status(monkeypatch):
             pass
 
     monkeypatch.setattr(aiohttp, "ClientSession", _DummySession)
-
+    user.session = _FakeSession(get_responses=[_FakeResponse(200, status_text)])  # type: ignore
     asyncio.run(user.query_status())
     assert user.config.course_status["1"]["sc"] == 1
     assert user.config.course_status["1"]["lc"] == 2
@@ -143,7 +146,7 @@ def test_query_status_parse_success_sets_course_status(monkeypatch):
 def test_scheduler_check_conflict_when_course_full():
     user = _create_user()
     course = _course()
-    user.config.courses_info = [course]
+    user.config.set_courses_info([course])
     user.scheduler = user.Scheduler(user)
     user.config.set_course_status({"c1": {"sc": 10, "lc": 10}})
 
@@ -153,7 +156,7 @@ def test_scheduler_check_conflict_when_course_full():
 def test_scheduler_check_conflict_when_no_conflict():
     user = _create_user()
     course = _course()
-    user.config.courses_info = [course]
+    user.config.set_courses_info([course])
     user.scheduler = user.Scheduler(user)
     user.config.set_course_status({"c1": {"sc": 1, "lc": 10}})
     assert user.scheduler.check_conflict(course) is False
@@ -164,7 +167,7 @@ def test_start_runs_scheduler_and_grab(monkeypatch):
     user.config.set_course_status({"c1": {"sc": 1, "lc": 10}})
 
     async def fake_prepare():
-        user.config.courses_info = [_course()]
+        user.config.set_courses_info([_course()])
         user.scheduler = user.Scheduler(user)
 
     async def fake_query_status():
@@ -172,7 +175,7 @@ def test_start_runs_scheduler_and_grab(monkeypatch):
 
     called = {"grab": 0}
 
-    async def fake_grab(course, _session):
+    async def fake_grab(course):
         called["grab"] += 1
         assert course["id"] == "c1"
         return True
@@ -180,9 +183,11 @@ def test_start_runs_scheduler_and_grab(monkeypatch):
     monkeypatch.setattr(user, "prepare", fake_prepare)
     monkeypatch.setattr(user, "query_status", fake_query_status)
     monkeypatch.setattr(user, "grab", fake_grab)
-    monkeypatch.setattr(user.config, "_Config__startTime", 0.0)
+    monkeypatch.setattr(user.config, "startTime", 0.0)
 
     class _DummyClientSession:
+        def __init__(self, *args, **kwargs): ...
+        async def close(self): ...
         async def __aenter__(self):
             return self
 

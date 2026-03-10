@@ -10,7 +10,7 @@ from .config import (
     validate_config,
     validate_meta,
     merge_user_config,
-    set_config_meta as _set_config_meta,
+    set_config_meta,
 )
 
 
@@ -18,6 +18,7 @@ async def _work(config_path: str) -> None:
     with open(config_path, encoding="utf-8") as f:
         config = yaml.safe_load(f)
     validate_config(config)
+    validate_meta(config["meta"])
     set_config_meta(config["meta"])
     async with asyncio.TaskGroup() as tg:
         for user in create_users(config["users"]):
@@ -36,8 +37,3 @@ def create_user(config: dict) -> User:
 
 def create_users(configs: Iterable[dict]) -> list[User]:
     return [create_user(config) for config in configs]
-
-
-def set_config_meta(meta: dict) -> None:
-    validate_meta(meta)
-    _set_config_meta(meta)

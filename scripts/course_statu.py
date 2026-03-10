@@ -2,18 +2,23 @@
 # @Time    : 2025/09/05 14:16
 # @Author  : papersus
 # @File    : course_statu.py
-import json
 import os
 import asyncio
+import json
+import yaml
 import tju_autocourse as atc
 
 
 async def _main() -> None:
-    with open("./config.json", encoding="utf-8") as f:
-        config = json.load(f)
+    with open("./config.yaml", encoding="utf-8") as f:
+        config = yaml.safe_load(f)
     atc.set_config_meta(config["meta"])
     user = atc.create_user(config["users"][0])
-    await user.query_status()
+    await user._setup_session()
+    try:
+        await user.query_status()
+    finally:
+        await user._teardown_session()
     print(user.config.course_status)
     if not os.path.exists("./data"):
         os.mkdir("./data")

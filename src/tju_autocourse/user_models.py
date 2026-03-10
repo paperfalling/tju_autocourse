@@ -1,118 +1,64 @@
-import asyncio
 import time
 from typing import Optional, Generator, TYPE_CHECKING
-
-import aiohttp
+from pydantic import BaseModel, Field, PrivateAttr, field_validator
 from loguru import logger
-
-from .parsers import parse_courses_text
 
 if TYPE_CHECKING:
     from .user import User
 
 
-class Config:
-    def __init__(
-        self,
-        name: str,
-        cookie: str,
-        profileId: Optional[int] = None,
-        semesterId: Optional[int] = None,
-        domain: Optional[str] = None,
-        startTime: Optional[str] = None,
-        skipPre: Optional[bool] = None,
-    ) -> None:
-        self.cookie = cookie
-        self.name = name
-        self.__profileId = 0
-        self.__semesterId = 0
-        self.__domain = "classes.tju.edu.cn"
-        self.__startTime = time.mktime(
+class Config(BaseModel):
+    name: str
+    cookie: str
+    profileId: int = 0
+    semesterId: int = 0
+    domain: str = "classes.tju.edu.cn"
+    startTime: float = Field(
+        default_factory=lambda: time.mktime(
             time.strptime("1970-01-01T08:00:00", "%Y-%m-%dT%H:%M:%S")
         )
-        self.__skipPre = False
-        self.__course_status: dict = {}
-        if profileId is not None:
-            self.__profileId = profileId
-        if semesterId is not None:
-            self.__semesterId = semesterId
-        if domain is not None:
-            self.__domain = domain
-        if startTime is not None:
-            self.__startTime = time.mktime(
-                time.strptime(startTime, "%Y-%m-%dT%H:%M:%S")
-            )
-        if skipPre is not None:
-            self.__skipPre = skipPre
-        self.headers = {
+    )
+    skipPre: bool = False
+
+    _courses_info: list = PrivateAttr(default_factory=list)
+    _course_status: dict = PrivateAttr(default_factory=dict)
+
+    @field_validator("startTime", mode="before")
+    @classmethod
+    def validate_start_time(cls, v):
+        if isinstance(v, str):
+            try:
+                return time.mktime(time.strptime(v, "%Y-%m-%dT%H:%M:%S"))
+            except ValueError:
+                pass
+        return v
+
+    @property
+    def headers(self) -> dict:
+        return {
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-            "Accept-Encoding": "gzip, deflate, br, zstd",
             "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
             "Cache-Control": "max-age=0",
-            "Connection": "keep-alive",
-            "Content-Length": "39",
-            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            "Host": self.domain,
             "Origin": f"https://{self.domain}",
             "x-requested-with": "XMLHttpRequest",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
             "Referer": f"https://{self.domain}/eams/stdElectCourse!defaultPage.action",
             "Cookie": self.cookie,
         }
-        self.courses_info = []
-
-    async def query_courses_info(self) -> list:
-        logger.info(f"{self.name} 查询课程信息")
-        url = f"https://{self.domain}/eams/stdElectCourse!data.action?profileId={self.profileId}"
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    url,
-                    headers=self.headers,
-                    timeout=aiohttp.ClientTimeout(total=3),
-                ) as resp:
-                    status_code = resp.status
-                    resp_text = await resp.text()
-        except (asyncio.TimeoutError, aiohttp.ClientError):
-            logger.error(f"{self.name} 查询课程信息失败: Timeout")
-            return []
-        if status_code != 200:
-            logger.error(f"{self.name} 查询课程信息失败: [{status_code}]")
-            return []
-        try:
-            courses_info = parse_courses_text(resp_text)
-        except ValueError as exc:
-            logger.error(f"{self.name} 查询课程信息失败: {exc}")
-            return []
-        logger.success(f"{self.name} 查询课程信息成功")
-        return courses_info
 
     @property
     def course_status(self) -> dict:
-        return self.__course_status
-
-    @property
-    def profileId(self) -> int:
-        return self.__profileId
-
-    @property
-    def semesterId(self) -> int:
-        return self.__semesterId
-
-    @property
-    def domain(self) -> str:
-        return self.__domain
-
-    @property
-    def startTime(self) -> float:
-        return self.__startTime
-
-    @property
-    def skipPre(self) -> bool:
-        return self.__skipPre
+        return self._course_status
 
     def set_course_status(self, status: dict) -> None:
-        self.__course_status = status
+        self._course_status = status
+
+    @property
+    def courses_info(self) -> list:
+        return self._courses_info
+
+    def set_courses_info(self, info: list) -> None:
+        self._courses_info = info
 
 
 class Scheduler:
@@ -146,8 +92,6 @@ class Scheduler:
                     break
                 if self.check_conflict(course):
                     continue
-
-                # 发送该课程并且接收是否成功的结果
                 is_success = yield course
                 if is_success:
                     self.done.append(course)
