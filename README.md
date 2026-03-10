@@ -5,109 +5,108 @@
 ![Python Version](https://img.shields.io/badge/python-%3E%3D3.13-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-TJU AutoCourse is an automatic course selection tool designed for Tianjin University (TJU). It helps you automate the process of selecting courses with asynchronous requests for high efficiency.
+A high-concurrency asynchronous course selection tool designed for Tianjin University (TJU).
 
 ## Features
 
-- **Asynchronous Execution**: Built with `aiohttp` for fast and concurrent course selection operations.
-- **Flexible Configuration**: Supports global settings with user-level overrides via `config.yaml`.
-- **Multi-user Support**: Can handle multiple users and distinct course targets simultaneously.
-- **Helper Scripts**: Includes utility scripts to fetch all course info, check course capacities, and validate your configuration before the actual selection begins.
+- **High-performance async architecture**: Built on `aiohttp` with fully asynchronous network requests.
+- **Multi-account concurrency**: Supports running course selection tasks for multiple accounts in a single process.
+- **Strategy-based course selection**: Supports custom course groups and selection limits to avoid duplicate selections and timetable conflicts.
+- **Automation helpers**: Includes ready-to-use scripts for environment warm-up, data fetching, and configuration validation.
 
 ## Prerequisites
 
-- [Python >= 3.13](https://www.python.org/downloads/)
-- [uv](https://github.com/astral-sh/uv) (An extremely fast Python package installer and resolver)
+- [python](https://www.python.org/downloads/) >= 3.13
+- [uv](https://github.com/astral-sh/uv)
 
 ## Installation
 
-1. Clone the repository:
+1. **Clone the repository**:
 
    ```bash
    git clone https://github.com/paperfalling/tju_autocourse.git
    cd tju_autocourse
    ```
 
-2. Sync the dependencies and internal package using `uv`:
+2. **Install dependencies**:
 
    ```bash
    uv sync
    ```
 
-## Configuration
+3. **Initialize the configuration**:
 
-Duplicate or create your `config.yaml` in the project root directory. Here is an example:
+   Create `config.yaml` in the project root with reference to `config.template.yaml`. Global settings under `meta` can be inherited and overridden by per-user settings under `users`:
 
-```yaml
-meta:
-  domain: "classes.tju.edu.cn"
-  profileId: 3820
-  semesterId: 116
-  startTime: "1970-01-01T08:00:00"
-  skipPre: false
+   ```yaml
+   meta:
+     domain: classes.tju.edu.cn
+     profileId: 3820
+     semesterId: 116
+     startTime: 1970-01-01T08:00:00 # scheduled trigger time
+     skipPre: false                 # skip pre-checks to trade safety for speed
 
-users:
-  - name: "your name (any)"
-    cookie: "your cookie"
-    targets:
-      - group_name: "pe"
-        limit: 1
-        courses:
-          - "06488"
-          - "06491"
-      - group_name: "ele"
-        limit: 2
-        courses:
-          - "06236"
-          - "06233"
-```
+   users:
+     - name: UserA                  # account label
+       cookie: your cookie          # authentication credential from browser requests
+       targets:
+         - group_name: pe           # course group label
+           limit: 1                 # maximum successful selections in this group
+           courses:
+             - "06488"              # candidate course numbers in priority order
+             - "06491"
+   ```
 
-> [!NOTE]
->
-> 1. You must fill in the **course number (class ID)** instead of the course code.
-> 2. Configuration keys defined in `meta` can be **overridden** in individual user configurations.
-> 3. `domain`: The teaching system domain name, usually `classes.tju.edu.cn`.
-> 4. `profileId` & `semesterId`: Can be found by inspecting the network requests (XHR/Fetch) when accessing the university's course selection page.
-> 5. `startTime`: The exact time when course selection starts, formatted in ISO 8601 constraint. The script will wait until this time to start.
-> 6. `skipPre`: If `true`, the program will bypass querying the course capacity/status and try to select courses directly.
+   > **Note**: The minimum required field is `cookie`. Then run `uv run ./scripts/init.py` to auto-fill `name`, `profileId`, and `semesterId`.
 
-## Usage
+4. **Start the program**:
 
-### Main Process
+   ```bash
+   uv run ./main.py
+   ```
 
-After configuring the `config.yaml`, run the main automated course selection script:
+## Quick Start
 
-```bash
-uv run ./main.py
-```
+Recommended minimal workflow for first-time use:
 
-### Helper Scripts
+1. Run `uv sync` to install dependencies.
+2. Create `config.yaml` in the project root and fill in at least the `cookie` for each user.
+3. Run `uv run ./scripts/init.py` to auto-fill user information and selection parameters.
+4. If you want to validate course numbers first, run the data fetch scripts and then run `uv run ./scripts/check_course.py`.
+5. Confirm `startTime`, then run `uv run ./main.py`.
 
-We provide several utility scripts located in the `scripts/` directory to help you prepare.
+### Configuration Details
 
-- **Fetch Course Information**
-  Queries all available course information and saves it to `./data/course_info.json`.
+- **`meta` (global configuration)**: Provides default values inherited by users unless overridden in `users`.
+  - `domain`: Course selection system domain. In most cases, keep the default value `classes.tju.edu.cn`.
+  - `profileId` & `semesterId`: Selection round and semester identifiers. It is recommended to fetch them automatically with `init.py`.
+  - `startTime`: Exact time when the program should begin sending selection requests. The program sleeps until this time.
+  - `skipPre`: Set to `true` to skip the pre-run availability check.
+- **`users` (user configuration)**: Lets you configure independent course selection tasks for multiple users. Fields defined here override the corresponding values in `meta`.
+  - `name`: User label used only in logs and console output. If omitted, `init.py` can fill it automatically.
+  - `cookie`: Full authentication credential copied from browser request headers.
+- **`targets` (task groups)**: Used to group courses and limit how many can be selected, reducing duplicate selections and timetable conflicts.
+  - `group_name`: Group label used for task grouping and logs.
+  - `limit`: Maximum number of successful selections in the group. Once this limit is reached, remaining courses in the same group will be skipped. Set `-1` for no limit.
+  - `courses`: Ordered list of desired course numbers. **Use the course number, not the course code.** Earlier items have higher priority.
 
-  ```bash
-  uv run ./scripts/course_info.py
-  ```
+## Helper Scripts
 
-- **Fetch Course Status**
-  Queries the real-time capacity and selection status of courses and saves it to `./data/course_statu.json`.
+The project includes several validation and data-fetching scripts in the `scripts/` directory:
 
-  ```bash
-  uv run ./scripts/course_statu.py
-  ```
+- **Initialize and auto-fill configuration**: `uv run ./scripts/init.py`
+- **Fetch all course information for the current semester**: `uv run ./scripts/course_info.py`
+- **Fetch current availability for all courses**: `uv run ./scripts/course_statu.py`
+- **Validate the local course list**: `uv run ./scripts/check_course.py` (run the previous two scripts first to prepare the required data)
 
-- **Validate Configuration**
-  Checks all the exact courses listed in your `config.yaml` to ensure the course numbers are correct. Remember to fetch the info and status first.
+## FAQ
 
-  ```bash
-  uv run ./scripts/course_info.py
-  uv run ./scripts/course_statu.py
-  uv run ./scripts/check_course.py
-  ```
+- **`uv run ./scripts/init.py` says it created `config.yaml` on first run**: This is expected. If the file does not exist, the script creates it from the template. Fill in the `cookie` field first, then run the script again.
+- **`init.py` cannot fetch `name`, `profileId`, or `semesterId`**: The `cookie` is usually incomplete or expired. Log in to the course selection system again and copy the latest full `Cookie` header.
+- **Course info or course status queries fail after startup**: Check whether `domain`, `profileId`, and `semesterId` are correct, and make sure the course selection system is reachable from your network.
+- **Why does `skipPre` disable availability checks**: This is intentional. When set to `true`, the program skips the pre-run availability probe to save one round of requests, but it also loses the benefit of filtering based on current availability.
+- **Where are the logs**: The program automatically creates a `logs/` directory in the project root and writes detailed runtime logs there.
 
 ## Disclaimer
 
-This tool is intended for personal study and research purposes only. The user assumes all responsibilities and risks associated with its use. Please comply with the university's rules and regulations regarding course selection.
+This project is intended for technical research and learning purposes only. You are solely responsible for any risks or consequences arising from its use or from violating relevant university regulations.
