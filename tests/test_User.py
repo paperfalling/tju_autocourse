@@ -13,8 +13,13 @@ def _base_user_config() -> dict:
         "domain": "classes.tju.edu.cn",
         "startTime": "1970-01-01T08:00:00",
         "skipPre": False,
-        "tags_sort_limit": {"req": 1},
-        "courses": {"req": ["10001"]},
+        "targets": [
+            {
+                "group_name": "req",
+                "limit": 1,
+                "courses": ["10001"],
+            }
+        ],
     }
 
 
@@ -92,7 +97,7 @@ def test_skip_pre_explicit_false_is_preserved():
     assert user.config.skipPre is False
 
 
-def test_query_courses_info_parse_success():
+def test_query_courses_info_parse_success(monkeypatch):
     user = _create_user()
     fake_text = (
         "prefix "
@@ -100,19 +105,37 @@ def test_query_courses_info_parse_success():
         "'arrangeInfo':[{'weekState':'11','weekDay':1,'startUnit':1,'endUnit':2}]}]"
         " suffix"
     )
-    session = _FakeSession(get_responses=[_FakeResponse(200, fake_text)])
-    courses = asyncio.run(user.config.query_courses_info(session))
+
+    class _DummySession:
+        async def __aenter__(self):
+            return _FakeSession(get_responses=[_FakeResponse(200, fake_text)])
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+    monkeypatch.setattr(aiohttp, "ClientSession", _DummySession)
+
+    courses = asyncio.run(user.config.query_courses_info())
     assert len(courses) == 1
     assert courses[0]["no"] == "10001"
     assert courses[0]["arrangement"] == [(3, 1, 1, 2)]
 
 
-def test_query_status_parse_success_sets_course_status():
+def test_query_status_parse_success_sets_course_status(monkeypatch):
     user = _create_user()
     user.config.set_course_status({})
     status_text = "anything {'1':{sc:1,lc:2,unplan:'否'}} anything"
-    session = _FakeSession(get_responses=[_FakeResponse(200, status_text)])
-    asyncio.run(user.query_status(session))
+
+    class _DummySession:
+        async def __aenter__(self):
+            return _FakeSession(get_responses=[_FakeResponse(200, status_text)])
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+    monkeypatch.setattr(aiohttp, "ClientSession", _DummySession)
+
+    asyncio.run(user.query_status())
     assert user.config.course_status["1"]["sc"] == 1
     assert user.config.course_status["1"]["lc"] == 2
 
@@ -140,11 +163,11 @@ def test_start_runs_scheduler_and_grab(monkeypatch):
     user = _create_user()
     user.config.set_course_status({"c1": {"sc": 1, "lc": 10}})
 
-    async def fake_prepare(_session):
+    async def fake_prepare():
         user.config.courses_info = [_course()]
         user.scheduler = user.Scheduler(user)
 
-    async def fake_query_status(_session):
+    async def fake_query_status():
         return None
 
     called = {"grab": 0}
@@ -187,8 +210,7 @@ def test_config_is_isolated_between_users():
         {
             "name": "a",
             "cookie": "cookie=a",
-            "tags_sort_limit": {"req": 1},
-            "courses": {"req": ["10001"]},
+            "targets": [{"group_name": "req", "limit": 1, "courses": ["10001"]}],
         }
     )
     user_b = atc.create_user(
@@ -200,8 +222,7 @@ def test_config_is_isolated_between_users():
             "domain": "custom.domain",
             "startTime": "1970-01-01T09:00:00",
             "skipPre": True,
-            "tags_sort_limit": {"req": 1},
-            "courses": {"req": ["10001"]},
+            "targets": [{"group_name": "req", "limit": 1, "courses": ["10001"]}],
         }
     )
 
@@ -241,6 +262,6 @@ def test_create_user_rejects_missing_required_fields():
             {
                 "name": "tester",
                 "cookie": "cookie=test",
-                "tags_sort_limit": {"req": 1},
+                "targets": [{"group_name": "req", "limit": 1}],  # missing courses
             }
         )
