@@ -48,13 +48,12 @@ class Config:
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
             "Accept-Encoding": "gzip, deflate, br, zstd",
             "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-            "connection": "keep-alive",
-            # "Cache-Control": "no-cache",
+            "Cache-Control": "max-age=0",
+            "Connection": "keep-alive",
             "Content-Length": "39",
             "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
             "Host": self.domain,
             "Origin": f"https://{self.domain}",
-            # "Pragma": "no-cache",
             "x-requested-with": "XMLHttpRequest",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
             "Referer": f"https://{self.domain}/eams/stdElectCourse!defaultPage.action",
@@ -147,13 +146,13 @@ class Scheduler:
 
     def check_conflict(self, course: dict) -> bool:
         if not self.user.config.skipPre:
-            current_info: Optional[dict] = self.course_status.get(course["id"])
-            if current_info is None:
+            statu: Optional[dict] = self.course_status.get(course["id"])
+            if statu is None:
                 logger.warning(
                     f"{self.user.name} 未查询到课程状态: {course['name']}({course['no']})"
                 )
                 return True
-            if current_info["sc"] >= current_info["lc"]:
+            if statu["sc"] >= statu["lc"]:
                 logger.warning(
                     f"{self.user.name} 选课已满: {course['name']}({course['no']})"
                 )
