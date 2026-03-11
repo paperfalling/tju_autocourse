@@ -95,9 +95,8 @@
 项目提供多项运行前校验与数据拉取脚本（位于 `scripts/` 目录）：
 
 - **参数初始化与补全**：`uv run ./scripts/init.py`
-- **拉取本学期全部课程信息**：`uv run ./scripts/course_info.py`
-- **拉取全部课程当前余量状态**：`uv run ./scripts/course_statu.py`
-- **预检本地选课列表合法性**：`uv run ./scripts/check_course.py`（需先执行前两项脚本获取基础数据）
+- **拉取本学期全部课程信息**：`uv run ./scripts/course_fetch.py`
+- **预检本地选课列表合法性**：`uv run ./scripts/check_course.py`（需先执行前项脚本获取基础数据）
 
 ## 常见问题
 

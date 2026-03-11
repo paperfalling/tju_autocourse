@@ -10,8 +10,7 @@ from typing import Optional
 
 import aiohttp
 from loguru import logger
-from .parsers import parse_status_text
-from .user_models import Config, Scheduler
+from .user_models import Config, Scheduler, Session
 
 LOG_FORMAT = "<green>{time:HH:mm:ss}</green> | <cyan>{name}:{function}:L{line}</cyan> | <level>{level: <8}</level> | <level>{message}</level>"
 _LOGGER_INITIALIZED = False
@@ -29,65 +28,61 @@ def init_logger() -> None:
 
 
 class User:
-    Config = Config
-    Scheduler = Scheduler
-
     def __init__(self, config: dict) -> None:
         init_logger()
-        self.name = config["name"]
+        self.name: str = config["name"]
         logger.info(f"{self.name} 初始化")
-        self.config = Config.model_validate(config)
-        self.targets = config["targets"]
+        self.config: Config = Config.model_validate(config)
+        self.targets: list = config["targets"]
         self.scheduler: Optional[Scheduler] = None
+        self.session: Session = Session(headers=self.config.headers)
         self.timer = time.time()
         logger.success(f"{self.name} 初始化成功")
 
-    async def prepare(self) -> None:
-        self.config.set_courses_info(await self.query_info())
-        if not self.config.skipPre and not self.config.course_status:
-            await self.query_status()
-        self.scheduler = Scheduler(self)
+    async def prepare(self, save_path: Optional[str] = None) -> None:
+        async with self.session as session:
+            self.config.set_courses_info(await self.query_info(session))
+            if not self.config.course_status:
+                self.config.set_course_status(await self.query_status(session))
+            if save_path is not None:
+                info_path = os.path.join(save_path, f"course_info_{self.name}.json")
+                statu_path = os.path.join(save_path, f"course_statu_{self.name}.json")
+                import json
+
+                with open(info_path, "w", encoding="utf-8") as f:
+                    json.dump(self.config.courses_info, f, ensure_ascii=False, indent=4)
+                with open(statu_path, "w", encoding="utf-8") as f:
+                    json.dump(
+                        self.config.course_status, f, ensure_ascii=False, indent=4
+                    )
+                logger.success(f"{self.name} 课程信息与状态已保存到 {save_path}")
+            self.scheduler = Scheduler(self)
 
     async def wait(self, min_delay: float) -> None:
         await asyncio.sleep(max(0.0, min_delay + self.timer - time.time()))
         self.timer = time.time()
 
-    async def _setup_session(self):
-        if not hasattr(self, "session"):
-            connector = aiohttp.TCPConnector(limit=1, keepalive_timeout=30)
-            self.session = aiohttp.ClientSession(
-                connector=connector, headers=self.config.headers
-            )
-
-    async def _teardown_session(self):
-        if hasattr(self, "session"):
-            await self.session.close()
-            delattr(self, "session")
-
     async def start(self) -> None:
         res = False
-        await self._setup_session()
-        try:
-            await self.prepare()
-            if self.scheduler is None:
-                logger.error(f"{self.name} 调度器初始化失败")
-                return
-            start_time = self.config.startTime.timestamp()
-            scheduler = self.scheduler.begin()
-            next(scheduler)
-            while time.time() < start_time:
-                await asyncio.sleep(0.01)
+        await self.prepare()
+        if self.scheduler is None:
+            logger.error(f"{self.name} 调度器初始化失败")
+            return
+        start_time = self.config.startTime.timestamp()
+        scheduler = self.scheduler.begin()
+        next(scheduler)
+        while time.time() < start_time:
+            await asyncio.sleep(0.01)
+        async with self.session as session:
             logger.info(f"{self.name} 开始选课")
             while True:
                 try:
                     course = scheduler.send(res)
                 except StopIteration:
                     break
-                res = await self.grab(course)
-        finally:
-            await self._teardown_session()
+                res = await self.fetch(course, session)
 
-    async def grab(self, course: dict) -> bool:
+    async def fetch(self, course: dict, session: aiohttp.ClientSession) -> bool:
         url = f"https://{self.config.domain}/eams/stdElectCourse!batchOperator.action?profileId={self.config.profileId}"
         cid, cno, cname = course["id"], course["no"], course["name"]
         data = {"optype": "true", "operator0": f"{cid}:true:0"}
@@ -95,7 +90,7 @@ class User:
         while True:
             await self.wait(0.5)
             try:
-                async with self.session.post(
+                async with session.post(
                     url,
                     data=data,
                     timeout=aiohttp.ClientTimeout(total=2),
@@ -118,12 +113,12 @@ class User:
                 logger.error(f"{self.name} 请求超时: {cname}({cno})")
                 return False
 
-    async def query_info(self) -> list:
+    async def query_info(self, session: aiohttp.ClientSession) -> list:
         logger.info(f"{self.name} 查询课程信息")
         url = f"https://{self.config.domain}/eams/stdElectCourse!data.action?profileId={self.config.profileId}"
         await self.wait(0.5)
         try:
-            async with self.session.get(
+            async with session.get(
                 url,
                 timeout=aiohttp.ClientTimeout(total=3),
             ) as resp:
@@ -145,12 +140,12 @@ class User:
         logger.success(f"{self.name} 查询课程信息成功")
         return courses_info
 
-    async def query_status(self) -> None:
+    async def query_status(self, session: aiohttp.ClientSession) -> dict:
         url = f"https://{self.config.domain}/eams/stdElectCourse!queryStdCount.action?projectId=1&semesterId={self.config.semesterId}"
         logger.info("查询选课状态")
         await self.wait(0.5)
         try:
-            async with self.session.get(
+            async with session.get(
                 url,
                 timeout=aiohttp.ClientTimeout(total=2),
             ) as resp:
@@ -158,13 +153,16 @@ class User:
                 resp_text = await resp.text()
         except (asyncio.TimeoutError, aiohttp.ClientError):
             logger.error("查询选课状态失败: Timeout")
-            return
+            return {}
         if status_code != 200:
             logger.error(f"查询选课状态失败: [{status_code}]")
-            return
+            return {}
         try:
-            self.config.set_course_status(parse_status_text(resp_text))
+            from .parsers import parse_status_text
+
+            courses_status = parse_status_text(resp_text)
         except ValueError as exc:
             logger.error(f"查询选课状态失败: {exc}")
-            return
+            return {}
         logger.success("查询选课状态成功")
+        return courses_status

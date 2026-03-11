@@ -1,3 +1,4 @@
+import aiohttp
 import datetime
 from typing import Optional, Generator, TYPE_CHECKING
 from pydantic import BaseModel, Field, PrivateAttr
@@ -123,3 +124,18 @@ class Scheduler:
     @property
     def course_status(self) -> dict:
         return self.user.config.course_status
+
+
+class Session:
+    def __init__(self, headers: dict) -> None:
+        self.headers = headers
+        self.session: Optional[aiohttp.ClientSession] = None
+
+    async def __aenter__(self) -> aiohttp.ClientSession:
+        connector = aiohttp.TCPConnector(limit=1, keepalive_timeout=30)
+        self.session = aiohttp.ClientSession(connector=connector, headers=self.headers)
+        return self.session
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        if self.session is not None:
+            await self.session.close()

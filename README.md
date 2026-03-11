@@ -95,9 +95,8 @@ Recommended minimal workflow for first-time use:
 The project includes several validation and data-fetching scripts in the `scripts/` directory:
 
 - **Initialize and auto-fill configuration**: `uv run ./scripts/init.py`
-- **Fetch all course information for the current semester**: `uv run ./scripts/course_info.py`
-- **Fetch current availability for all courses**: `uv run ./scripts/course_statu.py`
-- **Validate the local course list**: `uv run ./scripts/check_course.py` (run the previous two scripts first to prepare the required data)
+- **Fetch all course information for the current semester**: `uv run ./scripts/course_fetch.py`
+- **Validate the local course list**: `uv run ./scripts/check_course.py` (run the previous scripts first to prepare the required data)
 
 ## FAQ
 

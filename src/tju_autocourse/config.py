@@ -48,10 +48,6 @@ _DEFAULT_META = {
 _config_meta = _DEFAULT_META.copy()
 
 
-def validate_meta(meta: dict) -> None:
-    MetaConfig.model_validate(meta)
-
-
 def validate_user_config(config: dict) -> None:
     UserConfig.model_validate(config)
 
@@ -63,7 +59,7 @@ def validate_config(config: dict) -> None:
 
 
 def set_config_meta(meta: dict) -> None:
-    validate_meta(meta)
+    MetaConfig.model_validate(meta)
     _config_meta.update(meta)
 
 

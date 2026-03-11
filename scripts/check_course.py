@@ -2,33 +2,32 @@
 # @Time    : 2025/09/25 14:07
 # @Author  : papersus
 # @File    : check_course.py
-import json
+import yaml
 import os
 
 
 if __name__ == "__main__":
     print("正在检查选课计划...")
-    print("想刷新课程状态请重新运行 scripts/course_statu.py 和 scripts/course_info.py")
-    if not os.path.exists("./data/course_statu.json"):
-        raise FileNotFoundError("请先运行 scripts/course_statu.py 以获取课程状态")
-    if not os.path.exists("./data/course_info.json"):
-        raise FileNotFoundError("请先运行 scripts/course_info.py 以获取课程信息")
-    if not os.path.exists("./config.json"):
-        raise FileNotFoundError("请确保 config.json 文件存在")
-    with open("./data/course_statu.json", encoding="utf-8") as f:
-        course_statu = json.load(f)
-    with open("./data/course_info.json", encoding="utf-8") as f:
-        course_info = json.load(f)
-    with open("./config.json", encoding="utf-8") as f:
-        config = json.load(f)
+    print("想刷新课程状态请重新运行 scripts/course_fetch.py")
+    if not os.path.exists("./config.yaml"):
+        raise FileNotFoundError("请确保 config.yaml 文件存在")
+    with open("./config.yaml", encoding="utf-8") as f:
+        config = yaml.safe_load(f)
     for user in config["users"]:
         name = user["name"]
         print(f"用户 {name} 选课计划: ")
-        tsl = user["tags_sort_limit"]
-        courses = user["courses"]
-        for tag in tsl:
-            print(f"  标签 {tag} (限制: {tsl[tag]}):")
-            for no in courses[tag]:
+        if not os.path.exists(f"./data/course_statu_{name}.json"):
+            raise FileNotFoundError("请先运行 scripts/course_statu.py 以获取课程状态")
+        if not os.path.exists(f"./data/course_info_{name}.json"):
+            raise FileNotFoundError("请先运行 scripts/course_info.py 以获取课程信息")
+        with open(f"./data/course_statu_{name}.json", encoding="utf-8") as f:
+            course_statu = yaml.safe_load(f)
+        with open(f"./data/course_info_{name}.json", encoding="utf-8") as f:
+            course_info = yaml.safe_load(f)
+        targets = user["targets"]
+        for group in targets:
+            print(f"  组 {group['group_name']} (限制: {group['limit']}):")
+            for no in group["courses"]:
                 course = next((c for c in course_info if c["no"] == no), None)
                 if not course:
                     print(f"    课程代码 {no} 未找到课程信息")
