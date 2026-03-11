@@ -34,6 +34,7 @@ class User:
         logger.info(f"{self.name} 初始化")
         self.config: Config = Config.model_validate(config)
         self.targets: list = config["targets"]
+        self.done: list[dict] = []
         self.scheduler: Optional[Scheduler] = None
         self.session: Session = Session(headers=self.config.headers)
         self.timer = time.time()
@@ -56,6 +57,7 @@ class User:
                         self.config.course_status, f, ensure_ascii=False, indent=4
                     )
                 logger.success(f"{self.name} 课程信息与状态已保存到 {save_path}")
+            self.done = await self.query_done(session)
             self.scheduler = Scheduler(self)
 
     async def wait(self, min_delay: float) -> None:
@@ -142,7 +144,7 @@ class User:
 
     async def query_status(self, session: aiohttp.ClientSession) -> dict:
         url = f"https://{self.config.domain}/eams/stdElectCourse!queryStdCount.action?projectId=1&semesterId={self.config.semesterId}"
-        logger.info("查询选课状态")
+        logger.info(f"{self.name} 查询选课状态")
         await self.wait(0.5)
         try:
             async with session.get(
@@ -152,17 +154,81 @@ class User:
                 status_code = resp.status
                 resp_text = await resp.text()
         except (asyncio.TimeoutError, aiohttp.ClientError):
-            logger.error("查询选课状态失败: Timeout")
+            logger.error(f"{self.name} 查询选课状态失败: Timeout")
             return {}
         if status_code != 200:
-            logger.error(f"查询选课状态失败: [{status_code}]")
+            logger.error(f"{self.name} 查询选课状态失败: [{status_code}]")
             return {}
         try:
             from .parsers import parse_status_text
 
             courses_status = parse_status_text(resp_text)
         except ValueError as exc:
-            logger.error(f"查询选课状态失败: {exc}")
+            logger.error(f"{self.name} 查询选课状态失败: {exc}")
             return {}
-        logger.success("查询选课状态成功")
+        logger.success(f"{self.name} 查询选课状态成功")
         return courses_status
+
+    async def query_done(self, session: aiohttp.ClientSession) -> list[dict]:
+        logger.info(f"{self.name} 查询已选课程")
+        url1 = "https://classes.tju.edu.cn/eams/courseTableForStd.action"
+        await self.wait(0.5)
+        try:
+            async with session.get(
+                url1,
+                timeout=aiohttp.ClientTimeout(total=2),
+            ) as resp:
+                status_code = resp.status
+                resp_text = await resp.text()
+        except (asyncio.TimeoutError, aiohttp.ClientError):
+            logger.error(f"{self.name} 查询已选课程失败: Timeout")
+            return []
+        if status_code != 200:
+            logger.error(f"{self.name} 查询已选课程失败: [{status_code}]")
+            return []
+        try:
+            from .parsers import parse_ids_text
+
+            ids = parse_ids_text(resp_text)
+        except ValueError as exc:
+            logger.error(f"{self.name} 查询已选课程失败: {exc}")
+            return []
+
+        url2 = "https://classes.tju.edu.cn/eams/courseTableForStd!courseTable.action"
+        data = {
+            "ignoreHead": "1",
+            "setting.kind": "std",
+            "startWeek": None,
+            "semester.id": self.config.semesterId,
+            "ids": ids,
+        }
+        await self.wait(0.5)
+        try:
+            async with session.post(
+                url2,
+                data=data,
+                timeout=aiohttp.ClientTimeout(total=2),
+            ) as resp:
+                status_code = resp.status
+                resp_text = await resp.text()
+        except (asyncio.TimeoutError, aiohttp.ClientError):
+            logger.error(f"{self.name} 查询已选课程失败: Timeout")
+            return []
+        if status_code != 200:
+            logger.error(f"{self.name} 查询已选课程失败: [{status_code}]")
+            return []
+        try:
+            from .parsers import parse_done_text
+
+            done = parse_done_text(resp_text)
+            done = [
+                course
+                for course_no in done
+                for course in self.config.courses_info
+                if course_no == course["no"]
+            ]
+        except ValueError as exc:
+            logger.error(f"{self.name} 查询已选课程失败: {exc}")
+            return []
+        logger.success(f"{self.name} 查询已选课程成功")
+        return done

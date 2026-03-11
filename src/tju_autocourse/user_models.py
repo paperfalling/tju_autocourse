@@ -71,7 +71,6 @@ class Scheduler:
                     "candidate_courses": candidate_courses,
                 }
             )
-        self.done = []
 
     def begin(self) -> Generator[dict, bool, None]:
         yield {}
@@ -85,7 +84,7 @@ class Scheduler:
                     continue
                 is_success = yield course
                 if is_success:
-                    self.done.append(course)
+                    self.user.done.append(course)
                     task["succeeded_count"] += 1
         return
 
@@ -102,7 +101,7 @@ class Scheduler:
                     f"{self.user.name} 选课已满: {course['name']}({course['no']})"
                 )
                 return True
-        for dc in self.done:
+        for dc in self.user.done:
             if dc["code"] == course["code"]:
                 logger.warning(
                     f"{self.user.name} 已选过同课程代码课程: {course['name']}({course['no']})"

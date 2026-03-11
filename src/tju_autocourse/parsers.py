@@ -50,3 +50,19 @@ def parse_courses_text(resp_text: str) -> list[dict]:
             }
         )
     return courses_info
+
+
+def parse_ids_text(resp_text: str) -> str:
+    m = re.search(r'bg\.form\.addInput\(form,"ids","(\d+)"\);', resp_text)
+    if not m:
+        raise ValueError("未找到课程ID")
+    return m.group(1)
+
+
+def parse_done_text(resp_text: str) -> list[dict]:
+    from lxml import html
+
+    etree = html.etree
+    tree = etree.HTML(resp_text)
+    done = tree.xpath('//*[@id="grid12042826911_data"]/tr/td[2]/a/text()')
+    return done
