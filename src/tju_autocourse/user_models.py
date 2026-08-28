@@ -1,32 +1,47 @@
-import aiohttp
 import datetime
-from typing import Optional, Generator, TYPE_CHECKING
-from pydantic import BaseModel, Field, PrivateAttr
+from collections.abc import Generator
+from typing import TYPE_CHECKING
+
+import aiohttp
 from loguru import logger
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
 if TYPE_CHECKING:
     from .user import User
 
 
 class Config(BaseModel):
-    name: str
-    cookie: str
+    name: str = "user"
+    cookie: str | None = None
+    username: str | None = None
+    password: str | None = None
+    account: str | None = None
     profileId: int = 0
     semesterId: int = 0
     domain: str = "classes.tju.edu.cn"
     startTime: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.strptime(
-            "1970-01-01T08:00:00", "%Y-%m-%dT%H:%M:%S"
+        default_factory=lambda: datetime.datetime(
+            1970, 1, 1, 8, 0, 0, tzinfo=datetime.UTC
         )
     )
     skipPre: bool = False
+
+    @model_validator(mode="after")
+    def validate_authentication(self) -> "Config":
+        if not self.cookie and not (self.password and (self.username or self.account)):
+            raise ValueError("provide cookie or username/password credentials")
+        return self
+
+    @property
+    def login_username(self) -> str | None:
+        return self.username or self.account
 
     _courses_info: list = PrivateAttr(default_factory=list)
     _course_status: dict = PrivateAttr(default_factory=dict)
 
     @property
     def headers(self) -> dict:
-        return {
+        headers = {
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
             "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
             "Cache-Control": "max-age=0",
@@ -34,8 +49,10 @@ class Config(BaseModel):
             "x-requested-with": "XMLHttpRequest",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
             "Referer": f"https://{self.domain}/eams/stdElectCourse!defaultPage.action",
-            "Cookie": self.cookie,
         }
+        if self.cookie:
+            headers["Cookie"] = self.cookie
+        return headers
 
     @property
     def course_status(self) -> dict:
@@ -72,7 +89,7 @@ class Scheduler:
                 }
             )
 
-    def begin(self) -> Generator[dict, bool, None]:
+    def begin(self) -> Generator[dict, bool]:
         yield {}
         for task in self.task_queue:
             group_name = task["group_name"]
@@ -90,7 +107,7 @@ class Scheduler:
 
     def check_conflict(self, course: dict) -> bool:
         if not self.user.config.skipPre:
-            statu: Optional[dict] = self.course_status.get(course["id"])
+            statu: dict | None = self.course_status.get(course["id"])
             if statu is None:
                 logger.warning(
                     f"{self.user.name} 未查询到课程状态: {course['name']}({course['no']})"
@@ -126,13 +143,32 @@ class Scheduler:
 
 
 class Session:
-    def __init__(self, headers: dict) -> None:
+    def __init__(
+        self,
+        headers: dict,
+        *,
+        domain: str | None = None,
+        username: str | None = None,
+        password: str | None = None,
+    ) -> None:
         self.headers = headers
-        self.session: Optional[aiohttp.ClientSession] = None
+        self.domain = domain
+        self.username = username
+        self.password = password
+        self.session: aiohttp.ClientSession | None = None
 
     async def __aenter__(self) -> aiohttp.ClientSession:
         connector = aiohttp.TCPConnector(limit=1, keepalive_timeout=30)
         self.session = aiohttp.ClientSession(connector=connector, headers=self.headers)
+        if self.username and self.password and self.domain:
+            from .auth import login
+
+            try:
+                await login(self.session, self.domain, self.username, self.password)
+            except BaseException:
+                await self.session.close()
+                self.session = None
+                raise
         return self.session
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:

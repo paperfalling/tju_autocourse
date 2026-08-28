@@ -4,7 +4,9 @@ from typing import cast
 
 import aiohttp
 import pytest
+
 import tju_autocourse as atc
+from tju_autocourse.auth import _hidden_fields
 from tju_autocourse.user_models import Scheduler
 
 
@@ -94,6 +96,32 @@ def test_headers_cookie_loaded_from_user_config():
     assert user.config.headers["Cookie"] == "cookie=test"
 
 
+def test_credentials_can_replace_cookie():
+    cfg = _base_user_config()
+    cfg.pop("cookie")
+    cfg["username"] = "student"
+    cfg["password"] = "secret"
+    user = _create_user(cfg)
+    assert user.config.login_username == "student"
+    assert "Cookie" not in user.config.headers
+
+
+def test_cas_hidden_fields_are_extracted():
+    body = (
+        '<form><input type="hidden" name="lt" value="LT-1">'
+        '<input type="hidden" name="execution" value="e1">'
+        '<input name="username"><input name="password"></form>'
+    )
+    assert _hidden_fields(body) == {"lt": "LT-1", "execution": "e1"}
+
+
+def test_authentication_is_required_when_no_cookie_or_credentials():
+    cfg = _base_user_config()
+    cfg.pop("cookie")
+    with pytest.raises(ValueError, match="username/password"):
+        _create_user(cfg)
+
+
 def test_skip_pre_explicit_false_is_preserved():
     cfg = _base_user_config()
     cfg["skipPre"] = False
@@ -174,7 +202,7 @@ def test_start_runs_scheduler_and_grab(monkeypatch):
     monkeypatch.setattr(
         user.config,
         "startTime",
-        datetime.datetime.now() - datetime.timedelta(seconds=1),
+        datetime.datetime.now(datetime.UTC) - datetime.timedelta(seconds=1),
     )
 
     class _DummyClientSession:

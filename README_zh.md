@@ -3,7 +3,7 @@
 [**English**](./README.md) | [**中文**](./README_zh.md)
 
 ![Python Version](https://img.shields.io/badge/python-%3E%3D3.13-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
+[![许可证: GPL v3](https://img.shields.io/badge/license-GPLv3-blue)](./LICENSE)
 
 专为天津大学（TJU）设计的高并发异步自动化选课工具。
 
@@ -17,7 +17,7 @@
 ## 环境依赖
 
 - [python](https://www.python.org/downloads/) >= 3.13
-- [uv](https://github.com/astral-sh/uv)
+- [uv](https://github.com/astral-sh/uv) >= 0.8.0
 
 ## 安装部署
 
@@ -48,7 +48,9 @@
 
    users:
      - name: UserA                  # 账号标识
-       cookie: your cookie          # 身份凭证 (登录后抓包获取)
+       username: your student ID    # TJU 统一认证账号
+       password: your password      # TJU 统一认证密码
+       # cookie: your cookie        # 兼容旧版手动 Cookie
        targets:
          - group_name: pe           # 课程组标识
            limit: 1                 # 本组选中上限数
@@ -57,7 +59,7 @@
              - "06491"
    ```
 
-   > **注**：最少只需填写 `cookie`。随后执行 `uv run ./scripts/init.py`，即可自动补全 `name`、`profileId` 及 `semesterId`。
+   > **注**：最少只需填写 `username`、`password` 和 `targets`。程序会复用微北洋的 TJU CAS + RSA + OCR 流程自动获取会话；随后执行 `uv run ./scripts/init.py`，即可自动补全 `name`、`profileId` 和 `semesterId`。
 
 4. **启动程序**：
 
@@ -70,7 +72,7 @@
 适合首次使用的最短流程：
 
 1. 执行 `uv sync` 安装依赖。
-2. 在项目根目录创建 `config.yaml`，至少填写每个用户的 `cookie`。
+2. 在项目根目录创建 `config.yaml`，为每个用户填写 `username` 和 `password`（也兼容旧版 `cookie`）。
 3. 执行 `uv run ./scripts/init.py` 自动补全用户信息与选课参数。
 4. 如需预检课程序号，先执行数据拉取脚本，再执行 `uv run ./scripts/check_course.py`。
 5. 确认 `startTime` 后，执行 `uv run ./main.py` 开始运行。
@@ -84,7 +86,8 @@
   - `skipPre`: 设为 `true` 可跳过选课前的余量检查。
 - **`users` (用户配置)**: 允许为多用户独立配置选课任务。如果在单个 user 下定义键值, 将会覆写全局 `meta` 的配置。
   - `name`: 用户标识, 仅用于日志与控制台输出展示。若未填写, 可由 `init.py` 自动获取。
-  - `cookie`: 用户的完整登录凭证, 可通过浏览器抓包获取。
+  - `username` / `password`: TJU 统一认证账密，程序会自动获取会话。
+  - `cookie`: 用户的完整登录凭证（兼容旧版，可通过浏览器抓包获取）。
 - **`targets` (任务组)**: 用于分类并限制选课数量, 防止时间冲突或多选。
   - `group_name`: 课程组标识, 仅用于任务分组与日志输出。
   - `limit`: 该组内课程**最多**选中的数量。达到该数量后, 程序会停止尝试该组内的其他课程。若设为 `-1`, 表示该组不限数量。
@@ -100,8 +103,8 @@
 
 ## 常见问题
 
-- **首次执行 `uv run ./scripts/init.py` 后提示已创建 `config.yaml`**：这是正常行为。脚本会在配置文件不存在时按模板生成文件，此时请先补充 `cookie`，再重新运行一次初始化脚本。
-- **`init.py` 无法获取 `name`、`profileId` 或 `semesterId`**：通常是 `cookie` 未填写完整或已失效。请重新登录选课系统后抓取最新请求头中的完整 `Cookie`。
+- **首次执行 `uv run ./scripts/init.py` 后提示已创建 `config.yaml`**：这是正常行为。脚本会在配置文件不存在时按模板生成文件，此时请先补充 `username` 和 `password`，再重新运行一次初始化脚本。
+- **`init.py` 无法获取 `name`、`profileId` 或 `semesterId`**：请检查统一认证账密、网络访问，以及账号是否要求人工验证码。
 - **启动后查询课程信息或查询选课状态失败**：优先检查 `domain`、`profileId`、`semesterId` 是否正确，以及当前网络是否可以正常访问选课系统。
 - **开启 `skipPre` 后为什么不做余量检查**：这是设计行为。设为 `true` 后程序会跳过开跑前的余量探测，以减少一次查询开销，但也会失去基于当前余量的预过滤。
 - **运行日志在哪里**：程序会在项目根目录自动创建 `logs/` 目录，并将每次运行的详细日志写入其中。

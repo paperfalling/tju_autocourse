@@ -1,12 +1,12 @@
 import datetime
-from typing import List, Optional
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel, Field, model_validator
 
 
 class TargetConfig(BaseModel):
     group_name: str
     limit: int
-    courses: List[str]
+    courses: list[str]
 
 
 class MetaConfig(BaseModel):
@@ -14,34 +14,43 @@ class MetaConfig(BaseModel):
     profileId: int = 0
     semesterId: int = 0
     startTime: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.strptime(
-            "1970-01-01T08:00:00", "%Y-%m-%dT%H:%M:%S"
+        default_factory=lambda: datetime.datetime(
+            1970, 1, 1, 8, 0, 0, tzinfo=datetime.UTC
         )
     )
     skipPre: bool = False
 
 
 class UserConfig(BaseModel):
-    name: str
-    cookie: str
-    targets: List[TargetConfig]
-    profileId: Optional[int] = None
-    semesterId: Optional[int] = None
-    domain: Optional[str] = None
-    startTime: Optional[datetime.datetime] = None
-    skipPre: Optional[bool] = None
+    name: str = "user"
+    cookie: str | None = None
+    username: str | None = None
+    password: str | None = None
+    account: str | None = None
+    targets: list[TargetConfig]
+    profileId: int | None = None
+    semesterId: int | None = None
+    domain: str | None = None
+    startTime: datetime.datetime | None = None
+    skipPre: bool | None = None
+
+    @model_validator(mode="after")
+    def validate_authentication(self) -> "UserConfig":
+        if not self.cookie and not (self.password and (self.username or self.account)):
+            raise ValueError("provide cookie or username/password credentials")
+        return self
 
 
 class AppConfig(BaseModel):
     meta: MetaConfig
-    users: List[UserConfig]
+    users: list[UserConfig]
 
 
 _DEFAULT_META = {
     "profileId": 0,
     "semesterId": 0,
     "domain": "classes.tju.edu.cn",
-    "startTime": datetime.datetime(1970, 1, 1, 8, 0, 0),
+    "startTime": datetime.datetime(1970, 1, 1, 8, 0, 0, tzinfo=datetime.UTC),
     "skipPre": False,
 }
 

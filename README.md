@@ -3,7 +3,7 @@
 [**English**](./README.md) | [**中文**](./README_zh.md)
 
 ![Python Version](https://img.shields.io/badge/python-%3E%3D3.13-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
+[![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue)](./LICENSE)
 
 A high-concurrency asynchronous course selection tool designed for Tianjin University (TJU).
 
@@ -17,7 +17,7 @@ A high-concurrency asynchronous course selection tool designed for Tianjin Unive
 ## Prerequisites
 
 - [python](https://www.python.org/downloads/) >= 3.13
-- [uv](https://github.com/astral-sh/uv)
+- [uv](https://github.com/astral-sh/uv) >= 0.8.0
 
 ## Installation
 
@@ -48,7 +48,9 @@ A high-concurrency asynchronous course selection tool designed for Tianjin Unive
 
    users:
      - name: UserA                  # account label
-       cookie: your cookie          # authentication credential from browser requests
+       username: your student ID    # TJU SSO account
+       password: your password      # TJU SSO password
+       # cookie: your cookie        # optional legacy mode
        targets:
          - group_name: pe           # course group label
            limit: 1                 # maximum successful selections in this group
@@ -57,7 +59,7 @@ A high-concurrency asynchronous course selection tool designed for Tianjin Unive
              - "06491"
    ```
 
-   > **Note**: The minimum required field is `cookie`. Then run `uv run ./scripts/init.py` to auto-fill `name`, `profileId`, and `semesterId`.
+   > **Note**: The minimum required fields are `username`, `password`, and `targets`. The login flow follows WePeiYang's TJU CAS + RSA + OCR process and obtains cookies automatically. Run `uv run ./scripts/init.py` to auto-fill `name`, `profileId`, and `semesterId`.
 
 4. **Start the program**:
 
@@ -70,7 +72,7 @@ A high-concurrency asynchronous course selection tool designed for Tianjin Unive
 Recommended minimal workflow for first-time use:
 
 1. Run `uv sync` to install dependencies.
-2. Create `config.yaml` in the project root and fill in at least the `cookie` for each user.
+2. Create `config.yaml` in the project root and fill in each user's `username` and `password` (or use a legacy `cookie`).
 3. Run `uv run ./scripts/init.py` to auto-fill user information and selection parameters.
 4. If you want to validate course numbers first, run the data fetch scripts and then run `uv run ./scripts/check_course.py`.
 5. Confirm `startTime`, then run `uv run ./main.py`.
@@ -84,7 +86,8 @@ Recommended minimal workflow for first-time use:
   - `skipPre`: Set to `true` to skip the pre-run availability check.
 - **`users` (user configuration)**: Lets you configure independent course selection tasks for multiple users. Fields defined here override the corresponding values in `meta`.
   - `name`: User label used only in logs and console output. If omitted, `init.py` can fill it automatically.
-  - `cookie`: Full authentication credential copied from browser request headers.
+  - `username` / `password`: TJU SSO credentials; the program obtains a session automatically.
+  - `cookie`: Full authentication credential copied from browser request headers (legacy mode).
 - **`targets` (task groups)**: Used to group courses and limit how many can be selected, reducing duplicate selections and timetable conflicts.
   - `group_name`: Group label used for task grouping and logs.
   - `limit`: Maximum number of successful selections in the group. Once this limit is reached, remaining courses in the same group will be skipped. Set `-1` for no limit.
@@ -100,8 +103,8 @@ The project includes several validation and data-fetching scripts in the `script
 
 ## FAQ
 
-- **`uv run ./scripts/init.py` says it created `config.yaml` on first run**: This is expected. If the file does not exist, the script creates it from the template. Fill in the `cookie` field first, then run the script again.
-- **`init.py` cannot fetch `name`, `profileId`, or `semesterId`**: The `cookie` is usually incomplete or expired. Log in to the course selection system again and copy the latest full `Cookie` header.
+- **`uv run ./scripts/init.py` says it created `config.yaml` on first run**: This is expected. If the file does not exist, the script creates it from the template. Fill in `username` and `password`, then run the script again.
+- **`init.py` cannot fetch `name`, `profileId`, or `semesterId`**: Check the SSO credentials, network access, and whether the account requires an interactive captcha.
 - **Course info or course status queries fail after startup**: Check whether `domain`, `profileId`, and `semesterId` are correct, and make sure the course selection system is reachable from your network.
 - **Why does `skipPre` disable availability checks**: This is intentional. When set to `true`, the program skips the pre-run availability probe to save one round of requests, but it also loses the benefit of filtering based on current availability.
 - **Where are the logs**: The program automatically creates a `logs/` directory in the project root and writes detailed runtime logs there.

@@ -1,8 +1,8 @@
-# -*- coding: utf-8 -*-
 # @Time    : 2025/09/05 14:16
 # @Author  : papersus
 # @File    : course_fetch.py
 import asyncio
+
 import tju_autocourse as atc
 
 

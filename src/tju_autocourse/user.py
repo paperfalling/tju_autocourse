@@ -1,15 +1,14 @@
-# -*- coding: utf-8 -*-
 # @Time    : 2025/09/02 18:26
 # @Author  : papersus
 # @File    : user.py
 import asyncio
-import time
-import sys
 import os
-from typing import Optional
+import sys
+import time
 
 import aiohttp
 from loguru import logger
+
 from .user_models import Config, Scheduler, Session
 
 LOG_FORMAT = "<green>{time:HH:mm:ss}</green> | <cyan>{name}:{function}:L{line}</cyan> | <level>{level: <8}</level> | <level>{message}</level>"
@@ -35,12 +34,17 @@ class User:
         self.config: Config = Config.model_validate(config)
         self.targets: list = config["targets"]
         self.done: list[dict] = []
-        self.scheduler: Optional[Scheduler] = None
-        self.session: Session = Session(headers=self.config.headers)
+        self.scheduler: Scheduler | None = None
+        self.session: Session = Session(
+            headers=self.config.headers,
+            domain=self.config.domain,
+            username=self.config.login_username,
+            password=self.config.password,
+        )
         self.timer = time.time()
         logger.success(f"{self.name} 初始化成功")
 
-    async def prepare(self, save_path: Optional[str] = None) -> None:
+    async def prepare(self, save_path: str | None = None) -> None:
         async with self.session as session:
             self.config.set_courses_info(await self.query_info(session))
             if not self.config.course_status:
@@ -50,9 +54,9 @@ class User:
                 statu_path = os.path.join(save_path, f"course_statu_{self.name}.json")
                 import json
 
-                with open(info_path, "w", encoding="utf-8") as f:
+                with open(info_path, "w", encoding="utf-8") as f:  # noqa: ASYNC230
                     json.dump(self.config.courses_info, f, ensure_ascii=False, indent=4)
-                with open(statu_path, "w", encoding="utf-8") as f:
+                with open(statu_path, "w", encoding="utf-8") as f:  # noqa: ASYNC230
                     json.dump(
                         self.config.course_status, f, ensure_ascii=False, indent=4
                     )
@@ -111,7 +115,7 @@ class User:
                     elif "选过" in resp:
                         logger.warning(f"{self.name} 选课已选过: {cname}({cno})")
                         return False
-            except (asyncio.TimeoutError, aiohttp.ClientError):
+            except (TimeoutError, aiohttp.ClientError):
                 logger.error(f"{self.name} 请求超时: {cname}({cno})")
                 return False
 
@@ -126,7 +130,7 @@ class User:
             ) as resp:
                 status_code = resp.status
                 resp_text = await resp.text()
-        except (asyncio.TimeoutError, aiohttp.ClientError):
+        except (TimeoutError, aiohttp.ClientError):
             logger.error(f"{self.name} 查询课程信息失败: Timeout")
             return []
         if status_code != 200:
@@ -153,7 +157,7 @@ class User:
             ) as resp:
                 status_code = resp.status
                 resp_text = await resp.text()
-        except (asyncio.TimeoutError, aiohttp.ClientError):
+        except (TimeoutError, aiohttp.ClientError):
             logger.error(f"{self.name} 查询选课状态失败: Timeout")
             return {}
         if status_code != 200:
@@ -180,7 +184,7 @@ class User:
             ) as resp:
                 status_code = resp.status
                 resp_text = await resp.text()
-        except (asyncio.TimeoutError, aiohttp.ClientError):
+        except (TimeoutError, aiohttp.ClientError):
             logger.error(f"{self.name} 查询已选课程失败: Timeout")
             return []
         if status_code != 200:
@@ -211,7 +215,7 @@ class User:
             ) as resp:
                 status_code = resp.status
                 resp_text = await resp.text()
-        except (asyncio.TimeoutError, aiohttp.ClientError):
+        except (TimeoutError, aiohttp.ClientError):
             logger.error(f"{self.name} 查询已选课程失败: Timeout")
             return []
         if status_code != 200:

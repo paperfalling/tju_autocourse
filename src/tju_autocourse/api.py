@@ -1,16 +1,17 @@
-# -*- coding: utf-8 -*-
 # @Time    : 2025/09/05 18:49
 # @Author  : papersus
 # @File    : api.py
 import asyncio
+from collections.abc import Iterable
+
 import yaml
-from typing import Iterable
-from .user import User, init_logger
+
 from .config import (
-    validate_config,
     merge_user_config,
     set_config_meta,
+    validate_config,
 )
+from .user import User, init_logger
 
 
 def get_config(config_path: str) -> dict:

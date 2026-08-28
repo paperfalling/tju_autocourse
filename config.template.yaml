@@ -3,7 +3,9 @@ meta:
   startTime: 1970-01-01T08:00:00
 
 users:
-- cookie: your cookie
+- username: your student ID
+  password: your password
+  # cookie: your cookie # optional legacy mode
   targets:
   - group_name: group 1 name
     limit: -1 # -1 means no limit

@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
 # @Time    : 2025/09/25 14:07
 # @Author  : papersus
 # @File    : check_course.py
-import yaml
 import os
 
+import yaml
 
 if __name__ == "__main__":
     print("正在检查选课计划...")
