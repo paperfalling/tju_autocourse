@@ -98,6 +98,40 @@
 - **拉取本学期全部课程信息**：`uv run ./scripts/course_fetch.py`
 - **预检本地选课列表合法性**：`uv run ./scripts/check_course.py`（需先执行前项脚本获取基础数据）
 
+## WebUI
+
+项目包含独立的 Vue 3 管理界面和 FastAPI 适配层。核心选课实现保持不变，Web API
+负责配置脱敏、课程同步、后台任务管理和实时日志推送。
+
+首次安装并构建：
+
+```bash
+uv sync --group dev
+cd frontend
+npm install
+npm run build
+cd ..
+```
+
+启动一体化 Web 服务：
+
+```bash
+uv run ./scripts/web.py
+```
+
+随后打开 `http://127.0.0.1:8000`。API 文档位于
+`http://127.0.0.1:8000/docs`。
+
+前端开发时可以分别启动 FastAPI 与 Vite：
+
+```bash
+uv run uvicorn web_api.main:app --reload --port 8000
+cd frontend && npm run dev
+```
+
+Cookie 只保存在本机 `config.yaml`，账号列表接口仅返回脱敏值，不会将完整凭证
+下发到浏览器或写入实时日志。
+
 ## 常见问题
 
 - **首次执行 `uv run ./scripts/init.py` 后提示已创建 `config.yaml`**：这是正常行为。脚本会在配置文件不存在时按模板生成文件，此时请先补充 `cookie`，再重新运行一次初始化脚本。

@@ -6,10 +6,12 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "aiohttp>=3.12.15",
+    "fastapi>=0.116.0",
     "loguru>=0.7.3",
     "lxml>=6.0.2",
     "pydantic>=2.12.5",
     "pyyaml>=6.0.3",
+    "uvicorn[standard]>=0.35.0",
 ]
 [build-system]
 requires = ["hatchling"]
@@ -17,4 +19,4 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/tju_autocourse"]
 [dependency-groups]
-dev = ["coverage>=7.10.6", "pytest>=8.4.2"]
+dev = ["coverage>=7.10.6", "httpx>=0.28.1", "pytest>=8.4.2"]

@@ -1,3 +1,10 @@
 logs
 config.yaml
 __pycache__
+.pytest_cache/
+.test-tmp*/
+pytest-cache-files-*/
+/data/
+/node_modules/
+/package.json
+/package-lock.json
