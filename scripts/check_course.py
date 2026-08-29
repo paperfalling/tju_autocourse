@@ -16,9 +16,9 @@ if __name__ == "__main__":
         name = user["name"]
         print(f"用户 {name} 选课计划: ")
         if not os.path.exists(f"./data/course_statu_{name}.json"):
-            raise FileNotFoundError("请先运行 scripts/course_statu.py 以获取课程状态")
+            raise FileNotFoundError("请先运行 scripts/course_fetch.py 以获取课程状态")
         if not os.path.exists(f"./data/course_info_{name}.json"):
-            raise FileNotFoundError("请先运行 scripts/course_info.py 以获取课程信息")
+            raise FileNotFoundError("请先运行 scripts/course_fetch.py 以获取课程信息")
         with open(f"./data/course_statu_{name}.json", encoding="utf-8") as f:
             course_statu = yaml.safe_load(f)
         with open(f"./data/course_info_{name}.json", encoding="utf-8") as f:

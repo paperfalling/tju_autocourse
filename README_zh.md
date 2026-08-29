@@ -1,114 +1,83 @@
 # TJU AutoCourse
 
-[**English**](./README.md) | [**中文**](./README_zh.md)
+[English](./README.md)
 
-![Python Version](https://img.shields.io/badge/python-%3E%3D3.13-blue)
-[![许可证: GPL v3](https://img.shields.io/badge/license-GPLv3-blue)](./LICENSE)
+基于天津大学 CAS 登录和 EAMS 接口的自动选课工具。每个用户拥有独立的 `requests.Session`，多个用户在独立 worker 线程中运行。
 
-专为天津大学（TJU）设计的高并发异步自动化选课工具。
+## 环境要求
 
-## 特性
+- Python 3.13 及以上
+- [uv](https://docs.astral.sh/uv/)
 
-- **异步高性能**：基于 `aiohttp` 的全异步网络请求框架。
-- **多账号并发**：支持单实例多账号并发选课。
-- **策略化选课**：支持自定义课程组与限选数量, 避免多选与时间冲突。
-- **自动化辅助**：内置开箱即用的环境预热、数据查询级校验脚本。
+## 安装
 
-## 环境依赖
+```bash
+uv sync
+```
 
-- [python](https://www.python.org/downloads/) >= 3.13
-- [uv](https://github.com/astral-sh/uv) >= 0.8.0
+## 配置
 
-## 安装部署
+复制 `config.template.yaml` 为 `config.yaml`，填写账密和课程目标：
 
-1. **克隆仓库**：
+```yaml
+meta:
+  domain: classes.tju.edu.cn
+  startTime: 2026-09-01T08:00:00
+  request_interval: 0.5
 
-   ```bash
-   git clone https://github.com/paperfalling/tju_autocourse.git
-   cd tju_autocourse
-   ```
+users:
+  - name: user1
+    username: "学号"
+    password: "密码"
+    targets:
+      - group_name: 必选
+        limit: 1
+        courses: ["06488", "06491"]
+```
 
-2. **安装依赖**：
+`profileId` 和 `semesterId` 可由初始化工具自动填写。也可以使用从浏览器复制的 `cookie`，此时不填写 `username` 和 `password`。
 
-   ```bash
-   uv sync
-   ```
+## 运行
 
-3. **初始化配置**：
+首次运行建议按以下顺序执行：
 
-   可参考 `config.template.yaml` 在项目根目录创建 `config.yaml` 文件。支持全局参数 (`meta`) 与局部配置 (`users`) 的继承覆写：
+```bash
+uv run ./scripts/init.py
+uv run ./scripts/course_fetch.py
+uv run ./scripts/check_course.py
+uv run ./main.py
+```
 
-   ```yaml
-   meta:
-     domain: classes.tju.edu.cn
-     profileId: 3820
-     semesterId: 116
-     startTime: 1970-01-01T08:00:00 # 挂机执行触发时间
-     skipPre: false                 # 开启时跳过余量探活以换取执行速度
+`init.py` 会登录并补全用户信息；`course_fetch.py` 将课程和余量快照保存到 `data/`；`check_course.py` 检查配置的课程号是否存在，并显示课程安排和余量。
 
-   users:
-     - name: UserA                  # 账号标识
-       username: your student ID    # TJU 统一认证账号
-       password: your password      # TJU 统一认证密码
-       # cookie: your cookie        # 兼容旧版手动 Cookie
-       targets:
-         - group_name: pe           # 课程组标识
-           limit: 1                 # 本组选中上限数
-           courses:
-             - "06488"              # 备选课程序号, 按优先级排序
-             - "06491"
-   ```
+正常运行建议保持 `request_interval: 0.5` 或更高。`startTime` 是开始尝试选课的时间。会话失效后，账密用户最多重新登录 `auth_retries` 次；仅 Cookie 模式没有账密，无法自动重新登录。服务器返回 `TOO_FAST`（点击过快）时，会按配置间隔最多重试 `too_fast_retries` 次。只有明确需要跳过余量预检查时才设置 `skipPre: true`。
 
-   > **注**：最少只需填写 `username`、`password` 和 `targets`。程序会复用微北洋的 TJU CAS + RSA + OCR 流程自动获取会话；随后执行 `uv run ./scripts/init.py`，即可自动补全 `name`、`profileId` 和 `semesterId`。
+## 配置说明
 
-4. **启动程序**：
+- `meta`：所有用户共享的默认配置。
+- `users`：独立的认证信息和选课目标，用户字段会覆盖 `meta`。
+- `targets`：按顺序执行的课程组。
+- `limit`：课程组允许成功选中的数量；`-1` 表示不限，`0` 表示跳过该组。
+- `courses`：按优先级排列的课程号，不是课程代码。
+- `auth_retries`：检测到会话失效后允许重新登录的次数。
+- `too_fast_retries`：服务器返回“点击过快”后允许重试的次数。
 
-   ```bash
-   uv run ./main.py
-   ```
+程序区分认证、网络传输、协议和业务结果错误。登录失败会在发送选课请求前停止该用户；选课结果未知时会先查询已选课程，再决定调度器是否继续。
 
-## 快速开始
+## 安全
 
-适合首次使用的最短流程：
+不要提交 `config.yaml`、密码、Cookie、验证码图片或响应正文。运行日志写入 `logs/`，课程快照写入 `data/`。
 
-1. 执行 `uv sync` 安装依赖。
-2. 在项目根目录创建 `config.yaml`，为每个用户填写 `username` 和 `password`（也兼容旧版 `cookie`）。
-3. 执行 `uv run ./scripts/init.py` 自动补全用户信息与选课参数。
-4. 如需预检课程序号，先执行数据拉取脚本，再执行 `uv run ./scripts/check_course.py`。
-5. 确认 `startTime` 后，执行 `uv run ./main.py` 开始运行。
+## 测试
 
-### 配置详解
+```bash
+uv run pytest -q
+uv run ruff check .
+uv run ruff format --check .
+```
 
-- **`meta` (全局配置)**: 提供默认参数, 若 `users` 中未指定则继承此处的配置。
-  - `domain`: 选课系统域名，通常保持默认值 `classes.tju.edu.cn` 即可。
-  - `profileId` & `semesterId`: 选课轮次与学期标识, 建议通过 `init.py` 脚本自动获取。
-  - `startTime`: 系统开始选课的确切时间。程序启动后会休眠至该时间再发起高并发请求。
-  - `skipPre`: 设为 `true` 可跳过选课前的余量检查。
-- **`users` (用户配置)**: 允许为多用户独立配置选课任务。如果在单个 user 下定义键值, 将会覆写全局 `meta` 的配置。
-  - `name`: 用户标识, 仅用于日志与控制台输出展示。若未填写, 可由 `init.py` 自动获取。
-  - `username` / `password`: TJU 统一认证账密，程序会自动获取会话。
-  - `cookie`: 用户的完整登录凭证（兼容旧版，可通过浏览器抓包获取）。
-- **`targets` (任务组)**: 用于分类并限制选课数量, 防止时间冲突或多选。
-  - `group_name`: 课程组标识, 仅用于任务分组与日志输出。
-  - `limit`: 该组内课程**最多**选中的数量。达到该数量后, 程序会停止尝试该组内的其他课程。若设为 `-1`, 表示该组不限数量。
-  - `courses`: 意向课程列表。**注意：此处必须填写"课程序号", 而非"课程代码"。** 按列表顺序优先级进行尝试。
-
-## 辅助工具
-
-项目提供多项运行前校验与数据拉取脚本（位于 `scripts/` 目录）：
-
-- **参数初始化与补全**：`uv run ./scripts/init.py`
-- **拉取本学期全部课程信息**：`uv run ./scripts/course_fetch.py`
-- **预检本地选课列表合法性**：`uv run ./scripts/check_course.py`（需先执行前项脚本获取基础数据）
-
-## 常见问题
-
-- **首次执行 `uv run ./scripts/init.py` 后提示已创建 `config.yaml`**：这是正常行为。脚本会在配置文件不存在时按模板生成文件，此时请先补充 `username` 和 `password`，再重新运行一次初始化脚本。
-- **`init.py` 无法获取 `name`、`profileId` 或 `semesterId`**：请检查统一认证账密、网络访问，以及账号是否要求人工验证码。
-- **启动后查询课程信息或查询选课状态失败**：优先检查 `domain`、`profileId`、`semesterId` 是否正确，以及当前网络是否可以正常访问选课系统。
-- **开启 `skipPre` 后为什么不做余量检查**：这是设计行为。设为 `true` 后程序会跳过开跑前的余量探测，以减少一次查询开销，但也会失去基于当前余量的预过滤。
-- **运行日志在哪里**：程序会在项目根目录自动创建 `logs/` 目录，并将每次运行的详细日志写入其中。
+测试使用确定性的假 HTTP 响应。只有运行程序或明确选择的辅助工具才会访问真实 TJU 服务。
 
 ## 免责声明
 
-本项目仅供技术研究与学习交流。因使用本工具选课或违反有关规定引发的风险与后果, 均自负。
+本项目仅用于技术研究和学习。使用者应自行遵守天津大学相关规定及适用法律。

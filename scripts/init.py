@@ -3,21 +3,21 @@
 运行此脚本可以避免手动抓包寻找 profileId 和 semesterId
 """
 
-import asyncio
 import os
-from contextlib import asynccontextmanager
+import re
+from contextlib import contextmanager
 
-import aiohttp
 import yaml
 
 from tju_autocourse.auth import AuthenticationError
+from tju_autocourse.user import Session
 
 CONFIG_PATH = "./config.yaml"
 
 
-async def fetch(user: dict, meta: dict, num: int):
+def fetch(user: dict, meta: dict, num: int):
     cookie = user.get("cookie", "")
-    username = user.get("username") or user.get("account")
+    username = user.get("username")
     password = user.get("password")
     if (not cookie or cookie == "your_cookie") and not (username and password):
         print(f"用户 {num}: 请提供 cookie 或 username/password")
@@ -43,56 +43,64 @@ async def fetch(user: dict, meta: dict, num: int):
     if cookie and cookie != "your_cookie":
         headers["Cookie"] = cookie
 
-    @asynccontextmanager
-    async def session_context():
-        async with aiohttp.ClientSession(headers=headers) as session:
-            if username and password and not (cookie and cookie != "your_cookie"):
-                from tju_autocourse.auth import login
-
-                await login(session, domain, username, password)
+    @contextmanager
+    def session_context():
+        wrapper = Session(
+            headers=headers,
+            domain=domain,
+            username=username if not (cookie and cookie != "your_cookie") else None,
+            password=password if not (cookie and cookie != "your_cookie") else None,
+        )
+        with wrapper as session:
             yield session
-
-    import re
 
     from lxml import html
 
     etree = html.etree
 
-    async def get_name():
+    def get_name():
         url = f"https://{domain}/eams/homeExt.action"
         try:
-            async with session_context() as session, session.get(url) as resp:
+            with session_context() as session:
+                resp = session.get(url, timeout=3)
                 if resp.status != 200:
-                    raise aiohttp.ClientError(f"请求失败，状态码: {resp.status}")
-                text = etree.HTML(await resp.text())
+                    raise RuntimeError(f"请求失败，状态码: {resp.status}")
+                text = etree.HTML(resp.text)
                 name = text.xpath('//*[@id="main-top"]/div/div/div/a/text()')
                 return name[0].strip() if name else f"user{num}"
-        except (aiohttp.ClientError, AuthenticationError) as exc:
+        except (RuntimeError, AuthenticationError) as exc:
             print(f"用户 {num} 登录失败，无法获取用户名: {exc}")
             return f"user{num}"
 
-    async def get_semester_id():
+    def get_semester_id():
         m = re.match(r"semester.id=(\d+)", cookie)
         if m:
             return int(m.group(1))
         url = f"https://{domain}/eams/courseTableForStd.action"
         try:
-            async with session_context() as session, session.get(url) as resp:
+            with session_context() as session:
+                resp = session.get(url, timeout=3)
                 if resp.status != 200:
-                    raise aiohttp.ClientError(f"请求失败，状态码: {resp.status}")
-                return int(resp.cookies["semester.id"].value)
-        except (aiohttp.ClientError, AuthenticationError) as exc:
+                    raise RuntimeError(f"请求失败，状态码: {resp.status}")
+                match = re.search(
+                    r"semester\.id=(\d+)", resp.headers.get("Set-Cookie", "")
+                )
+                if not match:
+                    raise ValueError("未找到 semesterId")
+                return int(match.group(1))
+        except (RuntimeError, AuthenticationError) as exc:
             print(f"用户 {num} 登录失败，无法获取 semesterId: {exc}")
             return 0
 
-    async def get_profile_id():
+    def get_profile_id():
         url = f"https://{domain}/eams/stdElectCourse.action"
         try:
             profiles = []
-            async with session_context() as session, session.get(url) as resp:
+            with session_context() as session:
+                resp = session.get(url, timeout=3)
                 if resp.status != 200:
-                    raise aiohttp.ClientError(f"请求失败，状态码: {resp.status}")
-                text = etree.HTML(await resp.text())
+                    raise RuntimeError(f"请求失败，状态码: {resp.status}")
+                text = etree.HTML(resp.text)
                 divs = text.xpath("/html/body/div[1]/div")
                 for div in divs:
                     h = div.xpath("./h2")[0].text
@@ -124,16 +132,16 @@ async def fetch(user: dict, meta: dict, num: int):
                 if choice.isdigit() and 1 <= int(choice) <= len(profiles):
                     return profiles[int(choice) - 1][0]
                 print("输入无效，请重新输入")
-        except (aiohttp.ClientError, AuthenticationError) as exc:
+        except (RuntimeError, AuthenticationError) as exc:
             print(f"用户 {num} 登录失败，无法获取 profileId: {exc}")
             return 0
 
     if not name:
-        name = await get_name()
+        name = get_name()
     if not semester_id:
-        semester_id = await get_semester_id()
+        semester_id = get_semester_id()
     if not profile_id:
-        profile_id = await get_profile_id()
+        profile_id = get_profile_id()
 
     user.update(
         {
@@ -146,16 +154,16 @@ async def fetch(user: dict, meta: dict, num: int):
     return user
 
 
-async def main():
+def main():
     if not os.path.exists(CONFIG_PATH):
-        with open("config.template.yaml", encoding="utf-8") as f:  # noqa: ASYNC230
+        with open("config.template.yaml", encoding="utf-8") as f:
             template = f.read()
-        with open(CONFIG_PATH, "w", encoding="utf-8") as f:  # noqa: ASYNC230
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             f.write(template)
         print(f"已创建配置文件 {CONFIG_PATH}，请编辑后重新运行此脚本")
         return
 
-    with open(CONFIG_PATH, encoding="utf-8") as f:  # noqa: ASYNC230
+    with open(CONFIG_PATH, encoding="utf-8") as f:
         config = yaml.safe_load(f) or {}
     meta = config.get("meta", {})
     meta["domain"] = meta.get("domain", "classes.tju.edu.cn")
@@ -171,17 +179,15 @@ async def main():
             ).replace(tzinfo=datetime.UTC)
         except ValueError:
             pass
-    config["users"] = await asyncio.gather(
-        *(
-            fetch(user, meta, num)
-            for num, user in enumerate(config.get("users", []), start=1)
-        )
-    )
+    config["users"] = [
+        fetch(user, meta, num)
+        for num, user in enumerate(config.get("users", []), start=1)
+    ]
 
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:  # noqa: ASYNC230
+    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         yaml.dump(config, f, allow_unicode=True, sort_keys=False)
         print("初始化完成, 配置已自动更新至 config.yaml")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

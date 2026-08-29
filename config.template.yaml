@@ -1,10 +1,13 @@
 meta:
   domain: classes.tju.edu.cn
   startTime: 1970-01-01T08:00:00
+  request_interval: 0.5 # seconds between requests for one user
+  auth_retries: 2 # re-login attempts after session expiry
+  too_fast_retries: 2 # retries after a too-fast response
 
 users:
-- username: your student ID
-  password: your password
+- username: "your username"
+  password: "your password"
   # cookie: your cookie # optional legacy mode
   targets:
   - group_name: group 1 name

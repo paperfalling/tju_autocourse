@@ -64,5 +64,10 @@ def parse_done_text(resp_text: str) -> list[dict]:
 
     etree = html.etree
     tree = etree.HTML(resp_text)
-    done = tree.xpath('//*[@id="grid12042826911_data"]/tr/td[2]/a/text()')
+    if tree is None:
+        raise ValueError("未找到有效的课程表")
+    table = tree.xpath('//*[@id="grid12042826911_data"]')
+    if not table:
+        raise ValueError("未找到有效的课程表")
+    done = table[0].xpath("./tr/td[2]/a/text()")
     return done

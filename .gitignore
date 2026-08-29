@@ -1,4 +1,8 @@
 logs
+data
 config.yaml
 __pycache__
+.pytest_cache
+.ruff_cache
+.uv-cache
 .venv

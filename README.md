@@ -1,114 +1,83 @@
 # TJU AutoCourse
 
-[**English**](./README.md) | [**中文**](./README_zh.md)
+[中文说明](./README_zh.md)
 
-![Python Version](https://img.shields.io/badge/python-%3E%3D3.13-blue)
-[![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue)](./LICENSE)
+TJU course-selection automation using the university CAS login and EAMS APIs. Each configured user owns an independent `requests.Session`; users run in separate worker threads.
 
-A high-concurrency asynchronous course selection tool designed for Tianjin University (TJU).
+## Requirements
 
-## Features
+- Python 3.13+
+- [uv](https://docs.astral.sh/uv/)
 
-- **High-performance async architecture**: Built on `aiohttp` with fully asynchronous network requests.
-- **Multi-account concurrency**: Supports running course selection tasks for multiple accounts in a single process.
-- **Strategy-based course selection**: Supports custom course groups and selection limits to avoid duplicate selections and timetable conflicts.
-- **Automation helpers**: Includes ready-to-use scripts for environment warm-up, data fetching, and configuration validation.
+## Install
 
-## Prerequisites
+```bash
+uv sync
+```
 
-- [python](https://www.python.org/downloads/) >= 3.13
-- [uv](https://github.com/astral-sh/uv) >= 0.8.0
+## Configure
 
-## Installation
+Copy `config.template.yaml` to `config.yaml`, then fill in credentials and targets:
 
-1. **Clone the repository**:
+```yaml
+meta:
+  domain: classes.tju.edu.cn
+  startTime: 2026-09-01T08:00:00
+  request_interval: 0.5
 
-   ```bash
-   git clone https://github.com/paperfalling/tju_autocourse.git
-   cd tju_autocourse
-   ```
+users:
+  - name: user1
+    username: "your student ID"
+    password: "your password"
+    targets:
+      - group_name: required
+        limit: 1
+        courses: ["06488", "06491"]
+```
 
-2. **Install dependencies**:
+`profileId` and `semesterId` can be filled automatically by the initialization tool. A legacy browser `cookie` may be used instead of `username` and `password`.
 
-   ```bash
-   uv sync
-   ```
+## Run
 
-3. **Initialize the configuration**:
+Recommended first run:
 
-   Create `config.yaml` in the project root with reference to `config.template.yaml`. Global settings under `meta` can be inherited and overridden by per-user settings under `users`:
+```bash
+uv run ./scripts/init.py
+uv run ./scripts/course_fetch.py
+uv run ./scripts/check_course.py
+uv run ./main.py
+```
 
-   ```yaml
-   meta:
-     domain: classes.tju.edu.cn
-     profileId: 3820
-     semesterId: 116
-     startTime: 1970-01-01T08:00:00 # scheduled trigger time
-     skipPre: false                 # skip pre-checks to trade safety for speed
+`init.py` logs in and fills missing user metadata. `course_fetch.py` saves course and availability snapshots under `data/`. `check_course.py` validates that configured course numbers exist and displays their schedules and availability.
 
-   users:
-     - name: UserA                  # account label
-       username: your student ID    # TJU SSO account
-       password: your password      # TJU SSO password
-       # cookie: your cookie        # optional legacy mode
-       targets:
-         - group_name: pe           # course group label
-           limit: 1                 # maximum successful selections in this group
-           courses:
-             - "06488"              # candidate course numbers in priority order
-             - "06491"
-   ```
+For normal operation, keep `request_interval: 0.5` or higher. `startTime` is the moment selection attempts begin. After session expiry, credential users are re-authenticated up to `auth_retries` times; Cookie-only sessions cannot re-authenticate automatically. A `TOO_FAST` business response is retried up to `too_fast_retries` times with the configured interval. Set `skipPre: true` only when you intentionally want to skip the availability pre-check.
 
-   > **Note**: The minimum required fields are `username`, `password`, and `targets`. The login flow follows WePeiYang's TJU CAS + RSA + OCR process and obtains cookies automatically. Run `uv run ./scripts/init.py` to auto-fill `name`, `profileId`, and `semesterId`.
+## Configuration
 
-4. **Start the program**:
+- `meta`: defaults shared by all users.
+- `users`: independent credentials and targets; user values override `meta`.
+- `targets`: ordered course groups.
+- `limit`: successful selections allowed in a group; `-1` means unlimited and `0` skips the group.
+- `courses`: course numbers in priority order, not course codes.
+- `auth_retries`: re-login attempts after an authenticated request detects an expired session.
+- `too_fast_retries`: retries after the server reports that requests arrived too quickly.
 
-   ```bash
-   uv run ./main.py
-   ```
+The application distinguishes authentication, transport, protocol, and business-result failures. A failed login stops that user before selection requests. Unknown selection results are confirmed through the selected-course query before the scheduler proceeds.
 
-## Quick Start
+## Security
 
-Recommended minimal workflow for first-time use:
+Never commit `config.yaml`, passwords, cookies, captcha images, or response bodies. Runtime logs are written to `logs/`; generated snapshots are written to `data/`.
 
-1. Run `uv sync` to install dependencies.
-2. Create `config.yaml` in the project root and fill in each user's `username` and `password` (or use a legacy `cookie`).
-3. Run `uv run ./scripts/init.py` to auto-fill user information and selection parameters.
-4. If you want to validate course numbers first, run the data fetch scripts and then run `uv run ./scripts/check_course.py`.
-5. Confirm `startTime`, then run `uv run ./main.py`.
+## Tests
 
-### Configuration Details
+```bash
+uv run pytest -q
+uv run ruff check .
+uv run ruff format --check .
+```
 
-- **`meta` (global configuration)**: Provides default values inherited by users unless overridden in `users`.
-  - `domain`: Course selection system domain. In most cases, keep the default value `classes.tju.edu.cn`.
-  - `profileId` & `semesterId`: Selection round and semester identifiers. It is recommended to fetch them automatically with `init.py`.
-  - `startTime`: Exact time when the program should begin sending selection requests. The program sleeps until this time.
-  - `skipPre`: Set to `true` to skip the pre-run availability check.
-- **`users` (user configuration)**: Lets you configure independent course selection tasks for multiple users. Fields defined here override the corresponding values in `meta`.
-  - `name`: User label used only in logs and console output. If omitted, `init.py` can fill it automatically.
-  - `username` / `password`: TJU SSO credentials; the program obtains a session automatically.
-  - `cookie`: Full authentication credential copied from browser request headers (legacy mode).
-- **`targets` (task groups)**: Used to group courses and limit how many can be selected, reducing duplicate selections and timetable conflicts.
-  - `group_name`: Group label used for task grouping and logs.
-  - `limit`: Maximum number of successful selections in the group. Once this limit is reached, remaining courses in the same group will be skipped. Set `-1` for no limit.
-  - `courses`: Ordered list of desired course numbers. **Use the course number, not the course code.** Earlier items have higher priority.
-
-## Helper Scripts
-
-The project includes several validation and data-fetching scripts in the `scripts/` directory:
-
-- **Initialize and auto-fill configuration**: `uv run ./scripts/init.py`
-- **Fetch all course information for the current semester**: `uv run ./scripts/course_fetch.py`
-- **Validate the local course list**: `uv run ./scripts/check_course.py` (run the previous scripts first to prepare the required data)
-
-## FAQ
-
-- **`uv run ./scripts/init.py` says it created `config.yaml` on first run**: This is expected. If the file does not exist, the script creates it from the template. Fill in `username` and `password`, then run the script again.
-- **`init.py` cannot fetch `name`, `profileId`, or `semesterId`**: Check the SSO credentials, network access, and whether the account requires an interactive captcha.
-- **Course info or course status queries fail after startup**: Check whether `domain`, `profileId`, and `semesterId` are correct, and make sure the course selection system is reachable from your network.
-- **Why does `skipPre` disable availability checks**: This is intentional. When set to `true`, the program skips the pre-run availability probe to save one round of requests, but it also loses the benefit of filtering based on current availability.
-- **Where are the logs**: The program automatically creates a `logs/` directory in the project root and writes detailed runtime logs there.
+The test suite uses deterministic fake HTTP responses. Real TJU requests are only made when you run the application or an explicitly chosen helper.
 
 ## Disclaimer
 
-This project is intended for technical research and learning purposes only. You are solely responsible for any risks or consequences arising from its use or from violating relevant university regulations.
+For technical research and learning only. You are responsible for complying with TJU rules and applicable laws.

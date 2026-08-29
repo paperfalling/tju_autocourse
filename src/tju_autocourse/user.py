@@ -1,238 +1,393 @@
-# @Time    : 2025/09/02 18:26
-# @Author  : papersus
-# @File    : user.py
-import asyncio
+import json
 import os
-import sys
 import time
+from collections.abc import Generator
+from types import TracebackType
 
-import aiohttp
 from loguru import logger
 
-from .user_models import Config, Scheduler, Session
+from .eams import (
+    AuthenticationError,
+    EamsClient,
+    ProtocolError,
+    SelectionState,
+    SyncSession,
+    TransportError,
+)
+from .logging import init_logger
+from .models import UserConfig
 
-LOG_FORMAT = "<green>{time:HH:mm:ss}</green> | <cyan>{name}:{function}:L{line}</cyan> | <level>{level: <8}</level> | <level>{message}</level>"
-_LOGGER_INITIALIZED = False
+
+class Session:
+    """Own one authenticated HTTP session for one user run."""
+
+    def __init__(
+        self,
+        headers: dict,
+        *,
+        domain: str | None = None,
+        username: str | None = None,
+        password: str | None = None,
+    ) -> None:
+        self.headers = headers
+        self.domain = domain
+        self.username = username
+        self.password = password
+        self.session: SyncSession | None = None
+        self._depth = 0
+
+    def __enter__(self) -> SyncSession:
+        if self.session is not None:
+            self._depth += 1
+            return self.session
+        self.session = SyncSession(headers=self.headers)
+        self._depth = 1
+        if self.username and self.password and self.domain:
+            from .auth import login
+
+            try:
+                login(self.session, self.domain, self.username, self.password)
+            except BaseException:
+                self.session.close()
+                self.session = None
+                self._depth = 0
+                raise
+        return self.session
+
+    def __exit__(
+        self,
+        _exc_type: type[BaseException] | None,
+        _exc_value: BaseException | None,
+        _traceback: TracebackType | None,
+    ) -> None:
+        if self.session is None:
+            return
+        self._depth -= 1
+        if self._depth == 0:
+            self.session.close()
+            self.session = None
+
+    def reauthenticate(self) -> SyncSession:
+        if not (self.domain and self.username and self.password):
+            raise AuthenticationError(
+                "cannot reauthenticate without username/password credentials"
+            )
+        old_session = self.session
+        if old_session is not None:
+            old_session.close()
+        new_session = SyncSession(headers=self.headers)
+        try:
+            from .auth import login
+
+            login(new_session, self.domain, self.username, self.password)
+        except BaseException:
+            new_session.close()
+            self.session = None
+            raise
+        self.session = new_session
+        return new_session
 
 
-def init_logger() -> None:
-    global _LOGGER_INITIALIZED
-    if _LOGGER_INITIALIZED:
-        return
-    os.makedirs("./logs", exist_ok=True)
-    logger.remove()
-    logger.add(sys.stdout, format=LOG_FORMAT)
-    logger.add("./logs/{time:YYYY-MM-DD_HH-mm-ss}.log", mode="w", format=LOG_FORMAT)
-    _LOGGER_INITIALIZED = True
+class RequestLimiter:
+    """Space one user's requests using a monotonic clock."""
+
+    def __init__(self, interval: float) -> None:
+        self.interval = interval
+        self._last_request = time.monotonic()
+
+    def wait(self) -> None:
+        now = time.monotonic()
+        time.sleep(max(0.0, self.interval + self._last_request - now))
+        self._last_request = time.monotonic()
+
+
+class Scheduler:
+    """Turn a user's configured targets into ordered selection attempts."""
+
+    def __init__(self, user: "User") -> None:
+        self.user = user
+        self.task_queue = []
+        for target in user.config.targets:
+            candidate_courses = [
+                course
+                for course_no in target.courses
+                for course in self.user.courses_info
+                if course_no == course["no"]
+            ]
+            self.task_queue.append(
+                {
+                    "group_name": target.group_name,
+                    "target_count": target.limit,
+                    "succeeded_count": 0,
+                    "candidate_courses": candidate_courses,
+                }
+            )
+
+    def begin(self) -> Generator[dict, bool | None]:
+        yield {}
+        for task in self.task_queue:
+            group_name = task["group_name"]
+            for course in task["candidate_courses"]:
+                if task["succeeded_count"] >= task["target_count"] >= 0:
+                    logger.info(
+                        f"{self.user.name} [{group_name}] selected course limit reached"
+                    )
+                    break
+                if self.check_conflict(course):
+                    continue
+                is_success = yield course
+                if is_success is None:
+                    logger.error(
+                        f"{self.user.name} [{group_name}] selection result unknown; stopping scheduler"
+                    )
+                    return
+                if is_success:
+                    self.user.done.append(course)
+                    task["succeeded_count"] += 1
+
+    def check_conflict(self, course: dict) -> bool:
+        if not self.user.config.skipPre:
+            status: dict | None = self.course_status.get(course["id"])
+            if status is None:
+                logger.warning(
+                    f"{self.user.name} course status unavailable: {course['name']}({course['no']})"
+                )
+                return True
+            if status["sc"] >= status["lc"]:
+                logger.warning(
+                    f"{self.user.name} course is full: {course['name']}({course['no']})"
+                )
+                return True
+        for selected_course in self.user.done:
+            if selected_course["code"] == course["code"]:
+                logger.warning(
+                    f"{self.user.name} duplicate course code: {course['name']}({course['no']})"
+                )
+                return True
+            for selected_time in selected_course["arrangement"]:
+                for course_time in course["arrangement"]:
+                    if (
+                        selected_time[0] & course_time[0]
+                        and selected_time[1] == course_time[1]
+                        and max(selected_time[2], course_time[2])
+                        <= min(selected_time[3], course_time[3])
+                    ):
+                        logger.warning(
+                            f"{self.user.name} course time conflict: {course['name']}({course['no']})"
+                        )
+                        return True
+        return False
+
+    @property
+    def course_status(self) -> dict:
+        return self.user.course_status
 
 
 class User:
     def __init__(self, config: dict) -> None:
         init_logger()
-        self.name: str = config["name"]
+        self.name = config["name"]
         logger.info(f"{self.name} 初始化")
-        self.config: Config = Config.model_validate(config)
-        self.targets: list = config["targets"]
+        self.config = UserConfig.model_validate(config)
+        self.courses_info: list = []
+        self.course_status: dict = {}
         self.done: list[dict] = []
         self.scheduler: Scheduler | None = None
-        self.session: Session = Session(
+        self.session = Session(
             headers=self.config.headers,
             domain=self.config.domain,
-            username=self.config.login_username,
+            username=self.config.username,
             password=self.config.password,
         )
-        self.timer = time.time()
+        self.limiter = RequestLimiter(self.config.request_interval)
         logger.success(f"{self.name} 初始化成功")
 
-    async def prepare(self, save_path: str | None = None) -> None:
-        async with self.session as session:
-            self.config.set_courses_info(await self.query_info(session))
-            if not self.config.course_status:
-                self.config.set_course_status(await self.query_status(session))
-            if save_path is not None:
-                info_path = os.path.join(save_path, f"course_info_{self.name}.json")
-                statu_path = os.path.join(save_path, f"course_statu_{self.name}.json")
-                import json
-
-                with open(info_path, "w", encoding="utf-8") as f:  # noqa: ASYNC230
-                    json.dump(self.config.courses_info, f, ensure_ascii=False, indent=4)
-                with open(statu_path, "w", encoding="utf-8") as f:  # noqa: ASYNC230
-                    json.dump(
-                        self.config.course_status, f, ensure_ascii=False, indent=4
-                    )
-                logger.success(f"{self.name} 课程信息与状态已保存到 {save_path}")
-            self.done = await self.query_done(session)
-            self.scheduler = Scheduler(self)
-
-    async def wait(self, min_delay: float) -> None:
-        await asyncio.sleep(max(0.0, min_delay + self.timer - time.time()))
-        self.timer = time.time()
-
-    async def start(self) -> None:
-        res = False
-        await self.prepare()
-        if self.scheduler is None:
-            logger.error(f"{self.name} 调度器初始化失败")
-            return
-        start_time = self.config.startTime.timestamp()
-        scheduler = self.scheduler.begin()
-        next(scheduler)
-        while time.time() < start_time:
-            await asyncio.sleep(0.01)
-        async with self.session as session:
+    def run(self) -> None:
+        with self.session:
+            self.prepare()
+            if self.scheduler is None:
+                logger.error(f"{self.name} 调度器初始化失败")
+                return
+            start_time = self.config.startTime.timestamp()
+            while time.time() < start_time:
+                time.sleep(0.01)
             logger.info(f"{self.name} 开始选课")
+            scheduler = self.scheduler.begin()
+            result = False
+            next(scheduler)
             while True:
                 try:
-                    course = scheduler.send(res)
+                    course = scheduler.send(result)
                 except StopIteration:
-                    break
-                res = await self.fetch(course, session)
+                    return
+                result = self.fetch(course)
+                if result is None:
+                    if self.confirm_selection(course):
+                        result = True
+                    else:
+                        logger.warning(
+                            f"{self.name} 无法确认选课结果，本轮停止: {course['name']}({course['no']})"
+                        )
+                        return
 
-    async def fetch(self, course: dict, session: aiohttp.ClientSession) -> bool:
-        url = f"https://{self.config.domain}/eams/stdElectCourse!batchOperator.action?profileId={self.config.profileId}"
-        cid, cno, cname = course["id"], course["no"], course["name"]
-        data = {"optype": "true", "operator0": f"{cid}:true:0"}
-        logger.info(f"{self.name} 尝试选课: {cname}({cno})")
+    def prepare(self, save_path: str | None = None) -> None:
+        with self.session as session:
+            self.courses_info = self.query_info(session)
+            if not self.course_status:
+                self.course_status = self.query_status(session)
+            if save_path is not None:
+                os.makedirs(save_path, exist_ok=True)
+                with open(
+                    os.path.join(save_path, f"course_info_{self.name}.json"),
+                    "w",
+                    encoding="utf-8",
+                ) as file:
+                    json.dump(self.courses_info, file, ensure_ascii=False, indent=4)
+                with open(
+                    os.path.join(save_path, f"course_statu_{self.name}.json"),
+                    "w",
+                    encoding="utf-8",
+                ) as file:
+                    json.dump(self.course_status, file, ensure_ascii=False, indent=4)
+                logger.success(f"{self.name} 课程信息与状态已保存到 {save_path}")
+            self.done = self.query_done(session)
+            self.scheduler = Scheduler(self)
+
+    def wait(self, min_delay: float) -> None:
+        if min_delay == self.config.request_interval:
+            self.limiter.wait()
+            return
+        RequestLimiter(min_delay).wait()
+
+    def _client(self, session) -> EamsClient:
+        return EamsClient(
+            session,
+            domain=self.config.domain,
+            profile_id=self.config.profileId,
+            semester_id=self.config.semesterId,
+        )
+
+    def _call_with_auth_retry(self, operation, session=None):
+        current_session = session or self.session.session
+        remaining_retries = self.config.auth_retries
         while True:
-            await self.wait(0.5)
             try:
-                async with session.post(
-                    url,
-                    data=data,
-                    timeout=aiohttp.ClientTimeout(total=2),
-                ) as resp:
-                    resp = await resp.text()
-                    if "成功" in resp:
-                        logger.success(f"{self.name} 选课成功: {cname}({cno})")
-                        return True
-                    elif "过快" in resp:
-                        logger.warning(f"{self.name} 点击过快: {cname}({cno})")
-                    elif "不开放" in resp:
-                        logger.warning(f"{self.name} 选课不开放: {cname}({cno})")
-                    elif "已满" in resp:
-                        logger.warning(f"{self.name} 选课已满: {cname}({cno})")
-                        return False
-                    elif "选过" in resp:
-                        logger.warning(f"{self.name} 选课已选过: {cname}({cno})")
-                        return False
-            except (TimeoutError, aiohttp.ClientError):
-                logger.error(f"{self.name} 请求超时: {cname}({cno})")
+                return operation(current_session)
+            except AuthenticationError:
+                if remaining_retries <= 0:
+                    raise
+                while remaining_retries > 0:
+                    attempt = self.config.auth_retries - remaining_retries + 1
+                    logger.warning(
+                        f"{self.name} 会话失效，正在重新登录 ({attempt}/{self.config.auth_retries})"
+                    )
+                    remaining_retries -= 1
+                    try:
+                        current_session = self.session.reauthenticate()
+                    except AuthenticationError:
+                        if remaining_retries <= 0:
+                            raise
+                        continue
+                    break
+
+    def fetch(self, course: dict, session=None) -> bool | None:
+        cid, cno, cname = course["id"], course["no"], course["name"]
+        logger.info(f"{self.name} 尝试选课: {cname}({cno})")
+        for attempt in range(self.config.too_fast_retries + 1):
+            self.wait(self.config.request_interval)
+            try:
+                result = self._call_with_auth_retry(
+                    lambda active_session: self._client(active_session).select_course(
+                        cid
+                    ),
+                    session,
+                )
+            except TransportError:
+                logger.error(f"{self.name} 请求超时，选课结果未知: {cname}({cno})")
+                return None
+            except ProtocolError:
+                logger.error(f"{self.name} 请求失败: {cname}({cno})")
                 return False
+            if result.state is SelectionState.UNKNOWN:
+                logger.warning(f"{self.name} 选课返回未知结果: {cname}({cno})")
+                return None
+            if result.state is SelectionState.SUCCESS:
+                logger.success(f"{self.name} 选课成功: {cname}({cno})")
+                return True
+            if result.state is not SelectionState.TOO_FAST:
+                messages = {
+                    SelectionState.NOT_OPEN: "选课不开放",
+                    SelectionState.FULL: "选课已满",
+                    SelectionState.ALREADY_SELECTED: "选课已选过",
+                }
+                logger.warning(f"{self.name} {messages[result.state]}: {cname}({cno})")
+                return False
+            logger.warning(f"{self.name} 点击过快: {cname}({cno})")
+        return False
 
-    async def query_info(self, session: aiohttp.ClientSession) -> list:
+    def confirm_selection(self, course: dict, session=None) -> bool:
+        try:
+            selected = self.query_done(session)
+        except AuthenticationError:
+            raise
+        except (TransportError, ProtocolError) as exc:
+            logger.error(f"{self.name} 确认选课结果失败: {exc}")
+            return False
+        return any(
+            selected_course.get("id") == course.get("id")
+            or selected_course.get("no") == course.get("no")
+            for selected_course in selected
+        )
+
+    def query_info(self, session=None) -> list:
         logger.info(f"{self.name} 查询课程信息")
-        url = f"https://{self.config.domain}/eams/stdElectCourse!data.action?profileId={self.config.profileId}"
-        await self.wait(0.5)
+        self.wait(self.config.request_interval)
         try:
-            async with session.get(
-                url,
-                timeout=aiohttp.ClientTimeout(total=3),
-            ) as resp:
-                status_code = resp.status
-                resp_text = await resp.text()
-        except (TimeoutError, aiohttp.ClientError):
-            logger.error(f"{self.name} 查询课程信息失败: Timeout")
-            return []
-        if status_code != 200:
-            logger.error(f"{self.name} 查询课程信息失败: [{status_code}]")
-            return []
-        try:
-            from .parsers import parse_courses_text
-
-            courses_info = parse_courses_text(resp_text)
-        except ValueError as exc:
+            result = self._call_with_auth_retry(
+                lambda active_session: self._client(active_session).get_course_info(),
+                session,
+            )
+        except AuthenticationError:
+            logger.error(f"{self.name} 查询课程信息失败: 会话已失效")
+            raise
+        except (TransportError, ProtocolError) as exc:
             logger.error(f"{self.name} 查询课程信息失败: {exc}")
-            return []
+            raise
         logger.success(f"{self.name} 查询课程信息成功")
-        return courses_info
+        return result
 
-    async def query_status(self, session: aiohttp.ClientSession) -> dict:
-        url = f"https://{self.config.domain}/eams/stdElectCourse!queryStdCount.action?projectId=1&semesterId={self.config.semesterId}"
+    def query_status(self, session=None) -> dict:
         logger.info(f"{self.name} 查询选课状态")
-        await self.wait(0.5)
+        self.wait(self.config.request_interval)
         try:
-            async with session.get(
-                url,
-                timeout=aiohttp.ClientTimeout(total=2),
-            ) as resp:
-                status_code = resp.status
-                resp_text = await resp.text()
-        except (TimeoutError, aiohttp.ClientError):
-            logger.error(f"{self.name} 查询选课状态失败: Timeout")
-            return {}
-        if status_code != 200:
-            logger.error(f"{self.name} 查询选课状态失败: [{status_code}]")
-            return {}
-        try:
-            from .parsers import parse_status_text
-
-            courses_status = parse_status_text(resp_text)
-        except ValueError as exc:
+            result = self._call_with_auth_retry(
+                lambda active_session: self._client(active_session).get_course_status(),
+                session,
+            )
+        except AuthenticationError:
+            logger.error(f"{self.name} 查询选课状态失败: 会话已失效")
+            raise
+        except (TransportError, ProtocolError) as exc:
             logger.error(f"{self.name} 查询选课状态失败: {exc}")
-            return {}
+            raise
         logger.success(f"{self.name} 查询选课状态成功")
-        return courses_status
+        return result
 
-    async def query_done(self, session: aiohttp.ClientSession) -> list[dict]:
+    def query_done(self, session=None) -> list[dict]:
         logger.info(f"{self.name} 查询已选课程")
-        url1 = "https://classes.tju.edu.cn/eams/courseTableForStd.action"
-        await self.wait(0.5)
+        self.wait(self.config.request_interval)
         try:
-            async with session.get(
-                url1,
-                timeout=aiohttp.ClientTimeout(total=2),
-            ) as resp:
-                status_code = resp.status
-                resp_text = await resp.text()
-        except (TimeoutError, aiohttp.ClientError):
-            logger.error(f"{self.name} 查询已选课程失败: Timeout")
-            return []
-        if status_code != 200:
-            logger.error(f"{self.name} 查询已选课程失败: [{status_code}]")
-            return []
-        try:
-            from .parsers import parse_ids_text
-
-            ids = parse_ids_text(resp_text)
-        except ValueError as exc:
+            result = self._call_with_auth_retry(
+                lambda active_session: self._client(
+                    active_session
+                ).get_selected_courses(self.courses_info),
+                session,
+            )
+        except AuthenticationError:
+            logger.error(f"{self.name} 查询已选课程失败: 会话已失效")
+            raise
+        except (TransportError, ProtocolError) as exc:
             logger.error(f"{self.name} 查询已选课程失败: {exc}")
-            return []
-
-        url2 = "https://classes.tju.edu.cn/eams/courseTableForStd!courseTable.action"
-        data = {
-            "ignoreHead": "1",
-            "setting.kind": "std",
-            "startWeek": None,
-            "semester.id": self.config.semesterId,
-            "ids": ids,
-        }
-        await self.wait(0.5)
-        try:
-            async with session.post(
-                url2,
-                data=data,
-                timeout=aiohttp.ClientTimeout(total=2),
-            ) as resp:
-                status_code = resp.status
-                resp_text = await resp.text()
-        except (TimeoutError, aiohttp.ClientError):
-            logger.error(f"{self.name} 查询已选课程失败: Timeout")
-            return []
-        if status_code != 200:
-            logger.error(f"{self.name} 查询已选课程失败: [{status_code}]")
-            return []
-        try:
-            from .parsers import parse_done_text
-
-            done = parse_done_text(resp_text)
-            done = [
-                course
-                for course_no in done
-                for course in self.config.courses_info
-                if course_no == course["no"]
-            ]
-        except ValueError as exc:
-            logger.error(f"{self.name} 查询已选课程失败: {exc}")
-            return []
+            raise
         logger.success(f"{self.name} 查询已选课程成功")
-        return done
+        return result
