@@ -1,16 +1,14 @@
-# -*- coding: utf-8 -*-
-# @Time    : 2025/09/02 18:14
-# @Author  : papersus
-# @File    : __init__.py
-from .api import run, create_user, create_users, set_config_meta, get_config
-from .user import init_logger
+"""TJU AutoCourse: typed configuration and synchronous entrypoints."""
 
+from .api import create_user, fetch_courses, run
+from .config import AppConfig, ConfigError, UserConfig, load_config
 
 __all__ = [
-    "run",
+    "AppConfig",
+    "ConfigError",
+    "UserConfig",
     "create_user",
-    "create_users",
-    "set_config_meta",
-    "init_logger",
-    "get_config",
+    "fetch_courses",
+    "load_config",
+    "run",
 ]

@@ -1,12 +1,33 @@
 meta:
   domain: classes.tju.edu.cn
-  startTime: 1970-01-01T08:00:00
+  startTime: 1970-01-01T08:00:00 # 无时区时按运行机器的本地时间解释
+  skipPre: false # true 仅绕过余量预检查，仍检查冲突和组限额
+  selection_policy:
+    not_open: retry
+    too_fast: retry
+    full: skip
+    already_selected: skip
+    unknown: skip
 
 users:
-- cookie: your cookie
-  targets:
-  - group_name: group 1 name
-    limit: -1 # -1 means no limit
-    courses:
-    - "course 1 no."
-    - "course 2 no."
+  - name: user1
+    auth:
+      type: cookie
+      cookie: "填写浏览器复制的 Cookie"
+    # 使用 SSO 时，将整个 auth 替换为：
+    # auth:
+    #   type: sso
+    #   username: "学号"
+    #   password: "密码"
+    #   retries: 2
+    # profileId 和 semesterId 可由 scripts/init.py 补全。
+    # 删除 name 可由初始化工具获取用户名。
+    targets:
+      - group_name: group1
+        limit: 1 # -1 不限；0 跳过；正数限制本轮明确成功数
+        courses: ["06488", "06491"] # 课程序号，不是课程代码
+        # selection_policy:
+        #   full:
+        #     action: retry
+        #     max_retries: 3 # 首次尝试之外的重试次数
+        #     on_exhausted: skip # skip 或 stop

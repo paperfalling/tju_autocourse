@@ -1,3 +1,13 @@
 logs
 config.yaml
 __pycache__
+.venv/
+.pytest_cache/
+.ruff_cache/
+.uv-cache/
+data/
+dist/
+*.egg-info/
+.coverage
+htmlcov/
+.test-artifacts/

@@ -3,7 +3,7 @@
 # @Author  : papersus
 # @File    : main.py
 import tju_autocourse as atc
-
+from tju_autocourse.commands import cli
 
 if __name__ == "__main__":
-    atc.run("./config.yaml")
+    raise SystemExit(cli(lambda: atc.run("./config.yaml")))
