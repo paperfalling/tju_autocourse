@@ -80,10 +80,7 @@ def test_auth_validation_does_not_leak_secrets(auth):
     assert "topsecret" not in str(captured.value)
 
 
-def test_old_auth_migration_error_and_secret_repr():
-    with pytest.raises(ConfigError, match="auth.type") as captured:
-        parse_config({"users": [{"cookie": "topsecret", "targets": []}]})
-    assert "topsecret" not in str(captured.value)
+def test_current_auth_format_and_secret_repr():
     config = parse_config({"users": [user()]})
     assert "secret-cookie" not in repr(config)
 

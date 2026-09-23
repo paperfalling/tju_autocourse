@@ -59,15 +59,9 @@ auth:
 
 Cookie credentials are imported into a cookie jar scoped to the EAMS host, allowing server updates. Expiry stops Cookie users. SSO initially allows `1 + retries` login attempts; each later authentication recovery permits at most `retries` re-logins. Recovery validates the new session, restores the election profile, then retries the original operation. A successful login alone does not reset the recovery budget. Set `retries: 0` to disable retries. One user's failure does not cancel other users.
 
-SSO follows the historical TJU CAS flow, sending the concatenated username, password and login token to `https://learning.twt.edu.cn/enc`, and captcha images to that site's `/ocr` endpoint. These external helpers use a separate session from CAS/EAMS. Helper availability, captcha recognition and protocol changes can affect login.
-
-### Migration
-
-Legacy top-level user `cookie`, `username` and `password` fields are rejected with a migration error. Move them into either `auth: {type: cookie, cookie: ...}` or `auth: {type: sso, username: ..., password: ..., retries: 2}` and remove the old fields. Other existing business fields retain their names and meanings.
+SSO follows the TJU CAS flow, sending the concatenated username, password and login token to `https://learning.twt.edu.cn/enc`, and captcha images to that site's `/ocr` endpoint. These external helpers use a separate session from CAS/EAMS. Helper availability, captcha recognition and protocol changes can affect login.
 
 Course numbers must be quoted strings. Configuration writes always quote them and preserve leading zeroes, preventing YAML 1.1/1.2 differences from turning `02058` into integer `2058`. Already-numeric values require explicit correction; the program does not guess missing zeroes. `course_fetch.py` never writes the configuration file.
-
-Old asynchronous Python interfaces, `set_config_meta`, global configuration and `user_models` are removed. Use typed objects from `load_config(path)` and synchronous `User` operations. `run(config_path)` remains the main entrypoint and returns whether all users completed normally; configuration and worker failures produce nonzero CLI exit codes.
 
 ## Scheduling and response policies
 
@@ -105,7 +99,7 @@ By default, unknown selection outcomes are **not queried for confirmation**. Onl
 
 ## Architecture and validation
 
-See the [architecture walkthrough (Chinese)](docs/architecture.md) for module responsibilities, request flow, state ownership and change locations. Construct `User(config)` directly; the redundant `create_user` factory has been removed.
+See the [architecture walkthrough (Chinese)](docs/architecture.md) for module responsibilities, request flow, state ownership and change locations.
 
 Configuration resolves inheritance; authentication/session modules own identity and lifecycle; EAMS operations return typed values; the pure scheduler owns progress and policy budgets; application entrypoints own time and per-user concurrency. Logging is initialized only by entrypoints. Invalid selected-course pages never become empty timetables. Snapshots retain `data/course_info_<name>.json` and `data/course_statu_<name>.json`; logs go to `logs/`.
 

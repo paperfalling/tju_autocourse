@@ -118,7 +118,7 @@ class MetaConfig(Model):
 
         if not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?", value):
             raise ValueError("domain must be a hostname without a scheme or path")
-        return value.lower()
+        return value
 
 
 class UserConfig(MetaConfig):
@@ -142,10 +142,6 @@ class UserConfig(MetaConfig):
     def resolve_groups(cls, value):
         if not isinstance(value, dict):
             return value
-        if {"cookie", "username", "password"} & value.keys():
-            raise ValueError(
-                "旧认证字段已移除，请迁移至 auth.type=cookie/sso 和 auth 内的凭证字段"
-            )
         resolved = dict(value)
         if not isinstance(value.get("targets", []), list):
             return resolved

@@ -33,7 +33,7 @@ flowchart TD
 
 | 模块 | 主要职责 | 不应放入的逻辑 |
 | --- | --- | --- |
-| `config.py` | Pydantic 校验、认证配置、策略继承、迁移提示 | HTTP 请求、运行进度 |
+| `config.py` | Pydantic 校验、认证配置、策略继承 | HTTP 请求、运行进度 |
 | `domain.py` | `Course`、`Meeting`、`Capacity`、`SelectionResult`、`Action`，以及冲突判断 | 登录、线程管理 |
 | `scheduler.py` | 候选顺序、组限额、本地过滤、业务响应预算、运行报告 | URL、Cookie、SSO 流程 |
 | `user.py` | 单用户准备、定时等待、取消与调度调用 | HTML 解析、登录协议 |
@@ -53,7 +53,7 @@ flowchart TD
 
 以 `get_selected_courses(courses)` 为例：调用方只需要“获取已选课程”。`EamsClient` 知道该操作实际上需要先 GET 获取课表标识，再 POST 获取课表；`HttpSession` 会对这两次实际请求分别限速；`AuthenticatedEams` 则在认证失效时重登、恢复轮次并重新执行该操作。
 
-因此，会话模块中的 `get_course_info` 等短方法虽然外观像转发，实际上统一附加了认证恢复行为。删除它们会让每个调用点都承担掉线处理，不属于无用代码。`api.py` 原来的 `create_user(config)` 只返回 `User(config)`，没有额外行为，已删除。
+因此，会话模块中的 `get_course_info` 等短方法虽然外观像转发，实际上统一附加了认证恢复行为。每个调用点都通过这些方法获得一致的掉线处理。
 
 HTTP 与会话模块也承担不同的资源生命周期：重登会替换 `HttpSession`，但 `RequestLimiter` 仍由同一个 `AuthenticatedEams` 持有，避免新会话绕过请求间隔。
 
@@ -96,7 +96,7 @@ Cookie 明确失效就停止。SSO 首次最多登录 `1 + retries` 次；后续
 | `scripts/course_fetch.py` | `api.fetch_courses → run_users → User.prepare` | 导出完整课程与余量快照，不修改 `config.yaml` |
 | `scripts/check_course.py` | `commands.check_courses → storage.load_snapshot` | 只读取配置和本地快照，不访问网络 |
 
-快照名保留 `course_info_<name>.json` 和 `course_statu_<name>.json`。课程号在 YAML 写回时强制带引号，以保留字符串类型和前导零。旧实验脚本使用已移除的接口，已经清理。
+快照名为 `course_info_<name>.json` 和 `course_statu_<name>.json`。课程号在 YAML 写回时强制带引号，以保留字符串类型和前导零。
 
 ## 修改与测试入口
 

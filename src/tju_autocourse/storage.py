@@ -1,4 +1,4 @@
-"""Configuration writes and backwards-compatible course snapshots."""
+"""Configuration writes and course snapshots."""
 
 import json
 import os

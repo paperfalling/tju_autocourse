@@ -78,13 +78,13 @@ def test_cookie_is_scoped_updated_by_server_and_not_a_static_header():
     with HttpSession(
         "classes.tju.edu.cn", RequestLimiter(FakeClock()), raw_session=raw
     ) as session:
-        session.import_cookie("JSESSIONID=old; semester.id=134")
+        session.import_cookie("JSESSIONID=first; semester.id=134")
         session.get("https://classes.tju.edu.cn/eams/homeExt.action")
         session.get("https://classes.tju.edu.cn/eams/data")
         session.get("https://learning.twt.edu.cn/enc")
-        assert "JSESSIONID=old" in adapter.calls[0].headers["Cookie"]
+        assert "JSESSIONID=first" in adapter.calls[0].headers["Cookie"]
         assert "JSESSIONID=new" in adapter.calls[1].headers["Cookie"]
-        assert "old" not in adapter.calls[1].headers["Cookie"]
+        assert "first" not in adapter.calls[1].headers["Cookie"]
         assert "Cookie" not in adapter.calls[2].headers
         assert "Origin" not in adapter.calls[2].headers
         assert "Cookie" not in raw.headers
