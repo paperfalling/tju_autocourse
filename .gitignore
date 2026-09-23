@@ -2,6 +2,7 @@ logs
 config.yaml
 __pycache__
 .venv/
+.idea/
 .pytest_cache/
 .ruff_cache/
 .uv-cache/

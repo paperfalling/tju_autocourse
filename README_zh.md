@@ -109,12 +109,14 @@ selection_policy:
 
 ## 代码结构与验证
 
+模块职责、请求调用链、状态归属与修改入口见 [架构说明](docs/architecture.md)。直接构造 `User(config)`；无额外行为的 `create_user` 工厂已移除。
+
 配置模块解析继承，认证与会话模块维护身份及生命周期，EAMS 模块提供类型化请求，纯调度模块维护进度和策略预算，应用模块负责时间与多用户运行。日志仅由入口初始化，解析失败不会伪装成空课表。日志位于 `logs/`；快照保持 `data/course_info_<name>.json` 和 `data/course_statu_<name>.json` 格式。
 
 ```powershell
 uv run pytest -q
-uv run ruff check src tests main.py scripts/init.py scripts/course_fetch.py scripts/check_course.py
-uv run ruff format --check src tests main.py scripts/init.py scripts/course_fetch.py scripts/check_course.py
+uv run ruff check .
+uv run ruff format --check .
 uv build
 ```
 

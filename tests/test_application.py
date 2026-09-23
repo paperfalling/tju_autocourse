@@ -336,7 +336,7 @@ users:
         gateway = Gateway([course("02058")], capacities={"2058": Capacity(1, 2)})
         return User(config, client=gateway)
 
-    monkeypatch.setattr(api, "create_user", create)
+    monkeypatch.setattr(api, "User", create)
     assert api.fetch_courses(str(path), str(tmp_path / "data"))
     assert path.read_bytes() == before
     courses, _ = load_snapshot(tmp_path / "data", "tester")

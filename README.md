@@ -105,12 +105,14 @@ By default, unknown selection outcomes are **not queried for confirmation**. Onl
 
 ## Architecture and validation
 
+See the [architecture walkthrough (Chinese)](docs/architecture.md) for module responsibilities, request flow, state ownership and change locations. Construct `User(config)` directly; the redundant `create_user` factory has been removed.
+
 Configuration resolves inheritance; authentication/session modules own identity and lifecycle; EAMS operations return typed values; the pure scheduler owns progress and policy budgets; application entrypoints own time and per-user concurrency. Logging is initialized only by entrypoints. Invalid selected-course pages never become empty timetables. Snapshots retain `data/course_info_<name>.json` and `data/course_statu_<name>.json`; logs go to `logs/`.
 
 ```powershell
 uv run pytest -q
-uv run ruff check src tests main.py scripts/init.py scripts/course_fetch.py scripts/check_course.py
-uv run ruff format --check src tests main.py scripts/init.py scripts/course_fetch.py scripts/check_course.py
+uv run ruff check .
+uv run ruff format --check .
 uv build
 ```
 

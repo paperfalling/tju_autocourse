@@ -26,6 +26,7 @@ include = [
     "/main.py",
     "/README.md",
     "/README_zh.md",
+    "/docs",
     "/config.template.yaml",
     "/pyproject.toml",
     "/uv.lock",
